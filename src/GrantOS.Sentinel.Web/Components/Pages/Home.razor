@@ -1,0 +1,71 @@
+@page "/"
+@inject IOllamaChatService Ollama
+@inject IConversationService Conversations
+@inject IMemoryService Memory
+@inject IModelProfileService ModelProfiles
+
+<h1>Dashboard</h1>
+<p class="page-sub">Your local AI fortress. Nothing here leaves this machine.</p>
+
+<div class="card-grid">
+    <div class="card stat">
+        <span class="stat-label">Ollama</span>
+        @if (_loading)
+        {
+            <span class="meta">checking…</span>
+        }
+        else if (_online)
+        {
+            <span class="pill online"><span class="dot"></span>online</span>
+        }
+        else
+        {
+            <span class="pill offline"><span class="dot"></span>offline</span>
+        }
+    </div>
+    <div class="card stat">
+        <span class="stat-value">@_installedModels</span>
+        <span class="stat-label">Installed models</span>
+    </div>
+    <div class="card stat">
+        <span class="stat-value">@_conversationCount</span>
+        <span class="stat-label">Conversations</span>
+    </div>
+    <div class="card stat">
+        <span class="stat-value">@_memoryCount</span>
+        <span class="stat-label">Memory entries</span>
+    </div>
+</div>
+
+@if (!_loading && !_online)
+{
+    <div class="alert alert-warn">
+        Ollama is not responding. Start it (<code>ollama serve</code> or launch the Ollama app),
+        then pull a model with <code>ollama pull qwen2.5-coder</code>.
+    </div>
+}
+
+<h2>Get started</h2>
+<div class="btn-row">
+    <a class="btn btn-primary" href="chat">Open chat</a>
+    <a class="btn" href="models">Manage models</a>
+    <a class="btn" href="system-prompts">Edit system prompt</a>
+    <a class="btn" href="memory">Add a memory</a>
+</div>
+
+@code {
+    private bool _loading = true;
+    private bool _online;
+    private int _installedModels;
+    private int _conversationCount;
+    private int _memoryCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _online = await Ollama.IsAvailableAsync();
+        _installedModels = _online ? (await Ollama.ListModelsAsync()).Count : 0;
+        _conversationCount = (await Conversations.ListAsync()).Count;
+        _memoryCount = (await Memory.ListAsync()).Count;
+        _loading = false;
+    }
+}

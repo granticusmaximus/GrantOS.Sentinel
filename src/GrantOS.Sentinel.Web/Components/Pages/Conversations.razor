@@ -1,0 +1,49 @@
+@page "/conversations"
+@inject IConversationService Conversations
+@inject NavigationManager Nav
+
+<h1>Conversations</h1>
+<p class="page-sub">Every thread is stored locally in SQLite.</p>
+
+@if (_items is null)
+{
+    <p class="meta">loading…</p>
+}
+else if (_items.Count == 0)
+{
+    <div class="empty">No conversations yet. <a href="chat">Start one.</a></div>
+}
+else
+{
+    <div class="list">
+        @foreach (var c in _items)
+        {
+            <div class="list-item">
+                <div>
+                    <h3>@c.Title</h3>
+                    <span class="meta">@c.ModelName · @c.Scope · updated @c.UpdatedAt.ToLocalTime().ToString("g")</span>
+                </div>
+                <div class="btn-row">
+                    <button class="btn btn-sm" @onclick="() => Open(c.Id)">Open</button>
+                    <button class="btn btn-sm btn-danger" @onclick="() => Delete(c.Id)">Delete</button>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<Conversation>? _items;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload() => _items = [.. await Conversations.ListAsync()];
+
+    private void Open(int id) => Nav.NavigateTo($"chat/{id}");
+
+    private async Task Delete(int id)
+    {
+        await Conversations.DeleteAsync(id);
+        await Reload();
+    }
+}

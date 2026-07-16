@@ -1,0 +1,101 @@
+@page "/memory"
+@inject IMemoryService Memory
+@inject Microsoft.Extensions.Options.IOptions<SentinelOptions> SentinelOptions
+
+<h1>Memory Vault</h1>
+<p class="page-sub">Durable notes: standards, decisions, lessons, facts. Searchable and local.</p>
+
+<div class="card">
+    <label>@(_editing.Id == 0 ? "New entry" : $"Editing #{_editing.Id}")</label>
+    <input type="text" placeholder="Title" @bind="_editing.Title" />
+    <div class="btn-row" style="margin-top:.5rem">
+        <input type="text" placeholder="Category" @bind="_editing.Category" style="max-width:220px" />
+        <input type="text" placeholder="tags,comma,separated" @bind="_editing.Tags" style="max-width:280px" />
+        <label style="display:flex;align-items:center;gap:.4rem;margin:0;text-transform:none">
+            <input type="checkbox" @bind="_editing.Pinned" style="width:auto" /> pinned
+        </label>
+    </div>
+    <textarea placeholder="Content" @bind="_editing.Content" style="margin-top:.5rem"></textarea>
+    <div class="btn-row" style="margin-top:.6rem">
+        <button class="btn btn-primary" @onclick="Save" disabled="@string.IsNullOrWhiteSpace(_editing.Title)">Save</button>
+        @if (_editing.Id != 0)
+        {
+            <button class="btn btn-ghost" @onclick="ClearForm">Cancel</button>
+        }
+    </div>
+</div>
+
+<h2>Entries</h2>
+<input type="text" placeholder="Search…" @bind="_search" @bind:event="oninput" @bind:after="Reload" style="max-width:320px" />
+
+@if (_items is null)
+{
+    <p class="meta">loading…</p>
+}
+else if (_items.Count == 0)
+{
+    <div class="empty" style="margin-top:1rem">No entries match.</div>
+}
+else
+{
+    <div class="list" style="margin-top:1rem">
+        @foreach (var m in _items)
+        {
+            <div class="list-item">
+                <div>
+                    <h3>@(m.Pinned ? "📌 " : "")@m.Title</h3>
+                    <span class="meta">@m.Category · @m.Scope · @m.UpdatedAt.ToLocalTime().ToString("g")</span>
+                    <div>
+                        @foreach (var t in m.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                        {
+                            <span class="tag">@t</span>
+                        }
+                    </div>
+                </div>
+                <div class="btn-row">
+                    <button class="btn btn-sm" @onclick="() => Edit(m)">Edit</button>
+                    <button class="btn btn-sm btn-danger" @onclick="() => Delete(m.Id)">Delete</button>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<MemoryEntry>? _items;
+    private MemoryEntry _editing = new();
+    private string _search = "";
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload() =>
+        _items = [.. await Memory.ListAsync(string.IsNullOrWhiteSpace(_search) ? null : _search)];
+
+    private void Edit(MemoryEntry m) =>
+        _editing = new MemoryEntry { Id = m.Id, Title = m.Title, Content = m.Content, Category = m.Category, Tags = m.Tags, Pinned = m.Pinned, Scope = m.Scope };
+
+    private void ClearForm() => _editing = new MemoryEntry();
+
+    private async Task Save()
+    {
+        if (_editing.Id == 0)
+        {
+            _editing.Scope = SentinelOptions.Value.DefaultScope;
+            if (string.IsNullOrWhiteSpace(_editing.Category)) _editing.Category = "General";
+            await Memory.CreateAsync(_editing);
+        }
+        else
+        {
+            await Memory.UpdateAsync(_editing);
+        }
+        ClearForm();
+        await Reload();
+    }
+
+    private async Task Delete(int id)
+    {
+        await Memory.DeleteAsync(id);
+        if (_editing.Id == id) ClearForm();
+        await Reload();
+    }
+}

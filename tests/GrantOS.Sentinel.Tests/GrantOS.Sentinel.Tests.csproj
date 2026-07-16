@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="coverlet.collector" />
+    <!-- Brings Microsoft.Data.Sqlite transitively for the in-memory test connection. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\GrantOS.Sentinel.Domain\GrantOS.Sentinel.Domain.csproj" />
+    <ProjectReference Include="..\..\src\GrantOS.Sentinel.Application\GrantOS.Sentinel.Application.csproj" />
+    <ProjectReference Include="..\..\src\GrantOS.Sentinel.Infrastructure\GrantOS.Sentinel.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

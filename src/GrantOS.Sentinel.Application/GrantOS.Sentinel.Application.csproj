@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <!-- Application depends only on Domain (Clean Architecture dependency rule). -->
+    <ProjectReference Include="..\GrantOS.Sentinel.Domain\GrantOS.Sentinel.Domain.csproj" />
+  </ItemGroup>
+</Project>

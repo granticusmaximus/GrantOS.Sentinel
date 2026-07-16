@@ -1,0 +1,25 @@
+# Build output
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+artifacts/
+
+# Local SQLite database + WAL sidecars (data must never enter source control)
+*.db
+*.db-shm
+*.db-wal
+
+# Local/secret configuration overrides
+appsettings.*.local.json
+secrets.json
+.env
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+
+# macOS
+.DS_Store

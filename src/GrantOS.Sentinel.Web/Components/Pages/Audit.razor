@@ -1,0 +1,42 @@
+@page "/audit"
+@inject IToolAuditService Audit
+
+<h1>Audit Log</h1>
+<p class="page-sub">Every tool action and model call is recorded here.</p>
+
+@if (_items is null)
+{
+    <p class="meta">loading…</p>
+}
+else if (_items.Count == 0)
+{
+    <div class="empty">No tool actions logged yet.</div>
+}
+else
+{
+    <div class="list">
+        @foreach (var l in _items)
+        {
+            <div class="list-item">
+                <div>
+                    <h3>@l.ToolName · @l.Action @(l.Success ? "" : "⚠")</h3>
+                    <span class="meta">@l.CreatedAt.ToLocalTime().ToString("g") · @l.Scope</span>
+                    @if (!string.IsNullOrWhiteSpace(l.Parameters))
+                    {
+                        <div class="meta">@l.Parameters</div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(l.Result))
+                    {
+                        <div class="meta">→ @l.Result</div>
+                    }
+                </div>
+                <span class="pill @(l.Success ? "online" : "offline")"><span class="dot"></span>@(l.Success ? "ok" : "fail")</span>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<ToolAuditLog>? _items;
+    protected override async Task OnInitializedAsync() => _items = [.. await Audit.ListAsync()];
+}

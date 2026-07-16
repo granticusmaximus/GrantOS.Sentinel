@@ -1,0 +1,124 @@
+@page "/models"
+@inject IOllamaChatService Ollama
+@inject IModelProfileService Profiles
+
+<h1>Models</h1>
+<p class="page-sub">Installed Ollama models (live) and your saved profiles.</p>
+
+<h2>Installed on this machine</h2>
+@if (_loadingInstalled)
+{
+    <p class="meta">querying Ollama…</p>
+}
+else if (!_online)
+{
+    <div class="alert alert-warn">Ollama is offline, so installed models can't be listed. Run <code>ollama serve</code>.</div>
+}
+else if (_installed.Count == 0)
+{
+    <div class="empty">No models pulled yet. Try <code>ollama pull qwen2.5-coder</code>.</div>
+}
+else
+{
+    <div class="list">
+        @foreach (var m in _installed)
+        {
+            <div class="list-item">
+                <div>
+                    <h3>@m.Name</h3>
+                    <span class="meta">@m.Details?.ParameterSize @(m.Details?.Family is { } f ? $"· {f}" : "") · @FormatSize(m.Size)</span>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+<h2>Model profiles</h2>
+<div class="card">
+    <label>@(_editing.Id == 0 ? "New profile" : $"Editing #{_editing.Id}")</label>
+    <div class="btn-row">
+        <input type="text" placeholder="Ollama tag e.g. qwen2.5-coder:7b" @bind="_editing.Name" style="max-width:320px" />
+        <input type="text" placeholder="Display name" @bind="_editing.DisplayName" style="max-width:240px" />
+    </div>
+    <input type="text" placeholder="Description" @bind="_editing.Description" style="margin-top:.5rem" />
+    <div class="btn-row" style="margin-top:.5rem">
+        <div><label>Context length</label><input type="number" @bind="_editing.ContextLength" style="max-width:160px" /></div>
+        <div><label>Temperature</label><input type="number" step="0.1" @bind="_editing.Temperature" style="max-width:160px" /></div>
+    </div>
+    <div class="btn-row" style="margin-top:.6rem">
+        <button class="btn btn-primary" @onclick="Save" disabled="@string.IsNullOrWhiteSpace(_editing.Name)">Save</button>
+        @if (_editing.Id != 0)
+        {
+            <button class="btn btn-ghost" @onclick="ClearForm">Cancel</button>
+        }
+    </div>
+</div>
+
+@if (_profiles is not null)
+{
+    <div class="list" style="margin-top:1rem">
+        @foreach (var p in _profiles)
+        {
+            <div class="list-item">
+                <div>
+                    <h3>@p.DisplayName @if (p.IsDefault) { <span class="tag badge-default">default</span> }</h3>
+                    <span class="meta">@p.Name · ctx @p.ContextLength · temp @p.Temperature</span>
+                    <div class="meta">@p.Description</div>
+                </div>
+                <div class="btn-row">
+                    @if (!p.IsDefault)
+                    {
+                        <button class="btn btn-sm" @onclick="() => SetDefault(p.Id)">Make default</button>
+                    }
+                    <button class="btn btn-sm" @onclick="() => Edit(p)">Edit</button>
+                    @if (!p.IsDefault)
+                    {
+                        <button class="btn btn-sm btn-danger" @onclick="() => Delete(p.Id)">Delete</button>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private bool _loadingInstalled = true;
+    private bool _online;
+    private List<OllamaModelInfo> _installed = [];
+    private List<ModelProfile>? _profiles;
+    private ModelProfile _editing = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _online = await Ollama.IsAvailableAsync();
+        _installed = _online ? [.. await Ollama.ListModelsAsync()] : [];
+        _loadingInstalled = false;
+        await ReloadProfiles();
+    }
+
+    private async Task ReloadProfiles() => _profiles = [.. await Profiles.ListAsync()];
+
+    private void Edit(ModelProfile p) =>
+        _editing = new ModelProfile { Id = p.Id, Name = p.Name, DisplayName = p.DisplayName, Description = p.Description, ContextLength = p.ContextLength, Temperature = p.Temperature, IsDefault = p.IsDefault };
+
+    private void ClearForm() => _editing = new ModelProfile();
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(_editing.DisplayName)) _editing.DisplayName = _editing.Name;
+        if (_editing.Id == 0) await Profiles.CreateAsync(_editing);
+        else await Profiles.UpdateAsync(_editing);
+        ClearForm();
+        await ReloadProfiles();
+    }
+
+    private async Task SetDefault(int id) { await Profiles.SetDefaultAsync(id); await ReloadProfiles(); }
+    private async Task Delete(int id) { await Profiles.DeleteAsync(id); if (_editing.Id == id) ClearForm(); await ReloadProfiles(); }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes <= 0) return "—";
+        double gb = bytes / 1024d / 1024d / 1024d;
+        return gb >= 1 ? $"{gb:0.0} GB" : $"{bytes / 1024d / 1024d:0} MB";
+    }
+}

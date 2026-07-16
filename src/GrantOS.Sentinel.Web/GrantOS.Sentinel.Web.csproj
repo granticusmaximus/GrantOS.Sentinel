@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <ProjectReference Include="..\GrantOS.Sentinel.Application\GrantOS.Sentinel.Application.csproj" />
+    <ProjectReference Include="..\GrantOS.Sentinel.Infrastructure\GrantOS.Sentinel.Infrastructure.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Design-time tools so `dotnet ef` can run against this startup project. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+</Project>

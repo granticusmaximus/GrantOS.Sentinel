@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/GrantOS.Sentinel.Domain/GrantOS.Sentinel.Domain.csproj" />
+    <Project Path="src/GrantOS.Sentinel.Application/GrantOS.Sentinel.Application.csproj" />
+    <Project Path="src/GrantOS.Sentinel.Infrastructure/GrantOS.Sentinel.Infrastructure.csproj" />
+    <Project Path="src/GrantOS.Sentinel.Web/GrantOS.Sentinel.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/GrantOS.Sentinel.Tests/GrantOS.Sentinel.Tests.csproj" />
+  </Folder>
+</Solution>

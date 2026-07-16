@@ -1,0 +1,207 @@
+@page "/chat"
+@page "/chat/{ConversationId:int}"
+@inject IOllamaChatService Ollama
+@inject IConversationService Conversations
+@inject ISystemPromptService SystemPrompts
+@inject IModelProfileService ModelProfiles
+@inject IToolAuditService Audit
+@inject Microsoft.Extensions.Options.IOptions<SentinelOptions> SentinelOptions
+
+<div class="chat-page">
+    <h1>Chat</h1>
+
+    <div class="chat-toolbar">
+        <div class="field">
+            <label>Model</label>
+            <select @bind="_selectedModel" disabled="@_sending">
+                @if (_models.Count == 0)
+                {
+                    <option value="">No models found</option>
+                }
+                @foreach (var m in _models)
+                {
+                    <option value="@m">@m</option>
+                }
+            </select>
+        </div>
+        <div class="field">
+            <label>System prompt</label>
+            <select @bind="_selectedPromptId" disabled="@_sending">
+                <option value="">None</option>
+                @foreach (var p in _prompts)
+                {
+                    <option value="@p.Id">@p.Name</option>
+                }
+            </select>
+        </div>
+        <button class="btn btn-ghost btn-sm" @onclick="ResetConversation" disabled="@_sending">New thread</button>
+    </div>
+
+    @if (!_online)
+    {
+        <div class="alert alert-warn">
+            Ollama is offline. Start it and pull a model, then reload this page.
+        </div>
+    }
+    @if (_error is not null)
+    {
+        <div class="alert alert-danger">@_error</div>
+    }
+
+    <div class="chat-stream">
+        @if (_messages.Count == 0)
+        {
+            <div class="empty">Send a message to start. This thread is saved locally as soon as you do.</div>
+        }
+        @foreach (var msg in _messages)
+        {
+            <div class="msg @(msg.Role == ChatRole.User ? "user" : "assistant")">
+                <div class="who">@(msg.Role == ChatRole.User ? "you" : _selectedModel)</div>
+                <div class="@(_sending && msg == _messages[^1] && msg.Role == ChatRole.Assistant ? "cursor" : "")">@msg.Content</div>
+            </div>
+        }
+    </div>
+
+    <div class="chat-input">
+        <textarea @bind="_input" @bind:event="oninput" placeholder="Ask Sentinel…" disabled="@_sending"></textarea>
+        <button class="btn btn-primary" @onclick="SendAsync" disabled="@(_sending || string.IsNullOrWhiteSpace(_input) || !_online)">
+            @(_sending ? "…" : "Send")
+        </button>
+    </div>
+</div>
+
+@code {
+    [Parameter] public int? ConversationId { get; set; }
+
+    private readonly List<ChatMessage> _messages = [];
+    private List<string> _models = [];
+    private List<SystemPrompt> _prompts = [];
+
+    private string _selectedModel = "";
+    private int? _selectedPromptId;
+    private int? _conversationId;
+    private string _input = "";
+    private bool _sending;
+    private bool _online;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _online = await Ollama.IsAvailableAsync();
+        _prompts = [.. await SystemPrompts.ListAsync()];
+        _selectedPromptId = (await SystemPrompts.GetDefaultAsync())?.Id;
+
+        var installed = _online ? (await Ollama.ListModelsAsync()).Select(m => m.Name).ToList() : [];
+        var profiles = await ModelProfiles.ListAsync();
+        _models = installed.Count > 0 ? installed : profiles.Select(p => p.Name).ToList();
+
+        var defaultModel = (await ModelProfiles.GetDefaultAsync())?.Name;
+        _selectedModel = _models.Contains(defaultModel ?? "") ? defaultModel! : _models.FirstOrDefault() ?? "";
+
+        if (ConversationId is int existingId)
+            await LoadConversationAsync(existingId);
+    }
+
+    private async Task LoadConversationAsync(int id)
+    {
+        var convo = await Conversations.GetAsync(id);
+        if (convo is null) return;
+        _conversationId = convo.Id;
+        if (!string.IsNullOrWhiteSpace(convo.ModelName) && _models.Contains(convo.ModelName))
+            _selectedModel = convo.ModelName;
+        _selectedPromptId = convo.SystemPromptId;
+        _messages.Clear();
+        _messages.AddRange(convo.Messages.Where(m => m.Role != ChatRole.System));
+    }
+
+    private void ResetConversation()
+    {
+        _conversationId = null;
+        _messages.Clear();
+        _error = null;
+    }
+
+    private async Task SendAsync()
+    {
+        if (_sending || string.IsNullOrWhiteSpace(_input)) return;
+        _error = null;
+        _sending = true;
+
+        var userText = _input.Trim();
+        _input = "";
+        var scope = SentinelOptions.Value.DefaultScope;
+
+        // Persist the conversation on first message.
+        if (_conversationId is null)
+        {
+            var title = userText.Length > 60 ? userText[..60] + "…" : userText;
+            var convo = await Conversations.CreateAsync(title, _selectedModel, _selectedPromptId, scope);
+            _conversationId = convo.Id;
+        }
+
+        var userMessage = new ChatMessage { Role = ChatRole.User, Content = userText };
+        _messages.Add(userMessage);
+        await Conversations.AddMessageAsync(_conversationId!.Value, ChatRole.User, userText, null);
+
+        var assistantMessage = new ChatMessage { Role = ChatRole.Assistant, Content = "" };
+        _messages.Add(assistantMessage);
+
+        var request = await BuildRequestAsync();
+        var success = false;
+
+        try
+        {
+            await foreach (var delta in Ollama.StreamChatAsync(request))
+            {
+                assistantMessage.Content += delta;
+                await InvokeAsync(StateHasChanged);
+            }
+            success = true;
+        }
+        catch (Exception ex)
+        {
+            _error = $"The model call failed: {ex.Message}";
+        }
+
+        // Persist whatever we received (even a partial reply is worth keeping).
+        if (assistantMessage.Content.Length > 0)
+            await Conversations.AddMessageAsync(_conversationId.Value, ChatRole.Assistant, assistantMessage.Content, null);
+        else
+            _messages.Remove(assistantMessage);
+
+        await Audit.LogAsync(
+            toolName: "ollama",
+            action: "chat",
+            parameters: $"model={_selectedModel}; scope={scope}",
+            result: success ? $"ok ({assistantMessage.Content.Length} chars)" : "failed",
+            success: success,
+            scope: scope);
+
+        _sending = false;
+    }
+
+    private async Task<OllamaChatRequest> BuildRequestAsync()
+    {
+        var wire = new List<OllamaMessage>();
+
+        if (_selectedPromptId is int promptId)
+        {
+            var prompt = await SystemPrompts.GetAsync(promptId);
+            if (prompt is not null)
+                wire.Add(new OllamaMessage("system", prompt.Content));
+        }
+
+        foreach (var m in _messages.Where(m => m.Role != ChatRole.System))
+        {
+            if (m.Role == ChatRole.Assistant && string.IsNullOrEmpty(m.Content)) continue; // skip the pending placeholder
+            wire.Add(new OllamaMessage(m.Role == ChatRole.User ? "user" : "assistant", m.Content));
+        }
+
+        var profile = (await ModelProfiles.ListAsync()).FirstOrDefault(p => p.Name == _selectedModel);
+        var options = profile is null
+            ? null
+            : new OllamaOptions { NumCtx = profile.ContextLength, Temperature = profile.Temperature };
+
+        return new OllamaChatRequest { Model = _selectedModel, Messages = wire, Stream = true, Options = options };
+    }
+}

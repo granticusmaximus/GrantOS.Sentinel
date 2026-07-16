@@ -1,0 +1,71 @@
+@page "/system-prompts"
+@inject ISystemPromptService Prompts
+
+<h1>System Prompts</h1>
+<p class="page-sub">The base instructions that shape how Sentinel responds.</p>
+
+<div class="card">
+    <label>@(_editing.Id == 0 ? "New prompt" : $"Editing #{_editing.Id}")</label>
+    <input type="text" placeholder="Name" @bind="_editing.Name" />
+    <textarea placeholder="Prompt content" @bind="_editing.Content" style="margin-top:.5rem;min-height:140px"></textarea>
+    <div class="btn-row" style="margin-top:.6rem">
+        <button class="btn btn-primary" @onclick="Save" disabled="@(string.IsNullOrWhiteSpace(_editing.Name) || string.IsNullOrWhiteSpace(_editing.Content))">Save</button>
+        @if (_editing.Id != 0)
+        {
+            <button class="btn btn-ghost" @onclick="ClearForm">Cancel</button>
+        }
+    </div>
+</div>
+
+<h2>Saved prompts</h2>
+@if (_items is null)
+{
+    <p class="meta">loading…</p>
+}
+else
+{
+    <div class="list">
+        @foreach (var p in _items)
+        {
+            <div class="list-item">
+                <div>
+                    <h3>@p.Name @if (p.IsDefault) { <span class="tag badge-default">default</span> }</h3>
+                    <span class="meta">@(p.Content.Length > 140 ? p.Content[..140] + "…" : p.Content)</span>
+                </div>
+                <div class="btn-row">
+                    @if (!p.IsDefault)
+                    {
+                        <button class="btn btn-sm" @onclick="() => SetDefault(p.Id)">Make default</button>
+                    }
+                    <button class="btn btn-sm" @onclick="() => Edit(p)">Edit</button>
+                    @if (!p.IsDefault)
+                    {
+                        <button class="btn btn-sm btn-danger" @onclick="() => Delete(p.Id)">Delete</button>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<SystemPrompt>? _items;
+    private SystemPrompt _editing = new();
+
+    protected override async Task OnInitializedAsync() => await Reload();
+    private async Task Reload() => _items = [.. await Prompts.ListAsync()];
+
+    private void Edit(SystemPrompt p) => _editing = new SystemPrompt { Id = p.Id, Name = p.Name, Content = p.Content, IsDefault = p.IsDefault };
+    private void ClearForm() => _editing = new SystemPrompt();
+
+    private async Task Save()
+    {
+        if (_editing.Id == 0) await Prompts.CreateAsync(_editing);
+        else await Prompts.UpdateAsync(_editing);
+        ClearForm();
+        await Reload();
+    }
+
+    private async Task SetDefault(int id) { await Prompts.SetDefaultAsync(id); await Reload(); }
+    private async Task Delete(int id) { await Prompts.DeleteAsync(id); if (_editing.Id == id) ClearForm(); await Reload(); }
+}

@@ -1,0 +1,32 @@
+@page "/settings"
+@inject IOllamaChatService Ollama
+@inject Microsoft.Extensions.Options.IOptions<OllamaClientOptions> OllamaOptions
+@inject Microsoft.Extensions.Options.IOptions<SentinelOptions> SentinelOptions
+
+<h1>Settings</h1>
+<p class="page-sub">Phase 1 settings are read-only here and configured in <code>appsettings.json</code>.</p>
+
+<div class="card">
+    <label>Ollama base URL</label>
+    <input type="text" value="@OllamaOptions.Value.BaseUrl" readonly />
+    <label>Default model</label>
+    <input type="text" value="@OllamaOptions.Value.DefaultModel" readonly />
+    <label>Request timeout (seconds)</label>
+    <input type="text" value="@OllamaOptions.Value.TimeoutSeconds" readonly />
+    <label>Default project scope</label>
+    <input type="text" value="@SentinelOptions.Value.DefaultScope" readonly />
+    <div style="margin-top:1rem">
+        <span class="pill @(_online ? "online" : "offline")"><span class="dot"></span>@(_online ? "Ollama reachable" : "Ollama offline")</span>
+    </div>
+</div>
+
+<div class="alert alert-info">
+    Security: personal and work data are separated by project scope from day one, and no secrets
+    are stored in config or source control. Indexing work repositories and sending anything to
+    external services are intentionally not part of this build.
+</div>
+
+@code {
+    private bool _online;
+    protected override async Task OnInitializedAsync() => _online = await Ollama.IsAvailableAsync();
+}
