@@ -1,3 +1,5 @@
+using GrantOS.Sentinel.Domain.Enums;
+
 namespace GrantOS.Sentinel.Domain.Entities;
 
 /// <summary>A single chat thread with the local model.</summary>

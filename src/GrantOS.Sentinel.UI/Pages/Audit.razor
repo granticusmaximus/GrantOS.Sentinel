@@ -1,5 +1,5 @@
 @page "/audit"
-@inject IToolAuditService Audit
+@inject IToolAuditService AuditService
 
 <h1>Audit Log</h1>
 <p class="page-sub">Every tool action and model call is recorded here.</p>
@@ -38,5 +38,5 @@ else
 
 @code {
     private List<ToolAuditLog>? _items;
-    protected override async Task OnInitializedAsync() => _items = [.. await Audit.ListAsync()];
+    protected override async Task OnInitializedAsync() => _items = [.. await AuditService.ListAsync()];
 }

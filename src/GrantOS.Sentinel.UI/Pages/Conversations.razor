@@ -1,5 +1,5 @@
 @page "/conversations"
-@inject IConversationService Conversations
+@inject IConversationService ConversationsService
 @inject NavigationManager Nav
 
 <h1>Conversations</h1>
@@ -37,13 +37,13 @@ else
 
     protected override async Task OnInitializedAsync() => await Reload();
 
-    private async Task Reload() => _items = [.. await Conversations.ListAsync()];
+    private async Task Reload() => _items = [.. await ConversationsService.ListAsync()];
 
     private void Open(int id) => Nav.NavigateTo($"chat/{id}");
 
     private async Task Delete(int id)
     {
-        await Conversations.DeleteAsync(id);
+        await ConversationsService.DeleteAsync(id);
         await Reload();
     }
 }

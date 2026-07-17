@@ -1,5 +1,5 @@
 @page "/memory"
-@inject IMemoryService Memory
+@inject IMemoryService MemoryVault
 @inject Microsoft.Extensions.Options.IOptions<SentinelOptions> SentinelOptions
 
 <h1>Memory Vault</h1>
@@ -69,7 +69,7 @@ else
     protected override async Task OnInitializedAsync() => await Reload();
 
     private async Task Reload() =>
-        _items = [.. await Memory.ListAsync(string.IsNullOrWhiteSpace(_search) ? null : _search)];
+        _items = [.. await MemoryVault.ListAsync(string.IsNullOrWhiteSpace(_search) ? null : _search)];
 
     private void Edit(MemoryEntry m) =>
         _editing = new MemoryEntry { Id = m.Id, Title = m.Title, Content = m.Content, Category = m.Category, Tags = m.Tags, Pinned = m.Pinned, Scope = m.Scope };
@@ -82,11 +82,11 @@ else
         {
             _editing.Scope = SentinelOptions.Value.DefaultScope;
             if (string.IsNullOrWhiteSpace(_editing.Category)) _editing.Category = "General";
-            await Memory.CreateAsync(_editing);
+            await MemoryVault.CreateAsync(_editing);
         }
         else
         {
-            await Memory.UpdateAsync(_editing);
+            await MemoryVault.UpdateAsync(_editing);
         }
         ClearForm();
         await Reload();
@@ -94,7 +94,7 @@ else
 
     private async Task Delete(int id)
     {
-        await Memory.DeleteAsync(id);
+        await MemoryVault.DeleteAsync(id);
         if (_editing.Id == id) ClearForm();
         await Reload();
     }

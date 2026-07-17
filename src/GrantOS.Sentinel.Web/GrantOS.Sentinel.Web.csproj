@@ -2,6 +2,7 @@
   <ItemGroup>
     <ProjectReference Include="..\GrantOS.Sentinel.Application\GrantOS.Sentinel.Application.csproj" />
     <ProjectReference Include="..\GrantOS.Sentinel.Infrastructure\GrantOS.Sentinel.Infrastructure.csproj" />
+    <ProjectReference Include="..\GrantOS.Sentinel.UI\GrantOS.Sentinel.UI.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- Design-time tools so `dotnet ef` can run against this startup project. -->
