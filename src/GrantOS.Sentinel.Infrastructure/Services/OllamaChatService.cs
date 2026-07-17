@@ -52,7 +52,7 @@ public sealed class OllamaChatService(HttpClient http, ILogger<OllamaChatService
         return result ?? new OllamaChatResponse { Done = true };
     }
 
-    public async IAsyncEnumerable<string> StreamChatAsync(
+    public async IAsyncEnumerable<OllamaStreamEvent> StreamChatAsync(
         OllamaChatRequest request,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
@@ -67,6 +67,11 @@ public sealed class OllamaChatService(HttpClient http, ILogger<OllamaChatService
 
         await using var stream = await response.Content.ReadAsStreamAsync(ct);
         using var reader = new StreamReader(stream);
+
+        // Ollama's own guidance is to gather tool_calls across every chunk before acting on
+        // them, even though observed behavior delivers them atomically in one chunk - accumulate
+        // defensively rather than assume.
+        List<OllamaToolCall>? toolCalls = null;
 
         while (!reader.EndOfStream)
         {
@@ -91,10 +96,20 @@ public sealed class OllamaChatService(HttpClient http, ILogger<OllamaChatService
                 continue;
 
             if (chunk.Message?.Content is { Length: > 0 } delta)
-                yield return delta;
+                yield return new OllamaContentDelta(delta);
+
+            if (chunk.Message?.ToolCalls is { Count: > 0 } calls)
+            {
+                toolCalls ??= [];
+                toolCalls.AddRange(calls);
+            }
 
             if (chunk.Done)
+            {
+                if (toolCalls is { Count: > 0 })
+                    yield return new OllamaToolCallsReady(toolCalls);
                 yield break;
+            }
         }
     }
 }

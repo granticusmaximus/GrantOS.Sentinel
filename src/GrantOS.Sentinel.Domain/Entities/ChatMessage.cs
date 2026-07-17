@@ -10,6 +10,12 @@ public class ChatMessage
     public ChatRole Role { get; set; }
     public string Content { get; set; } = string.Empty;
 
+    /// <summary>Tool name, set only for <see cref="ChatRole.Tool"/> result messages.</summary>
+    public string? ToolName { get; set; }
+
+    /// <summary>JSON-serialized arguments the model called <see cref="ToolName"/> with.</summary>
+    public string? ToolArguments { get; set; }
+
     /// <summary>Output token count reported by Ollama (assistant messages), if known.</summary>
     public int? TokenCount { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

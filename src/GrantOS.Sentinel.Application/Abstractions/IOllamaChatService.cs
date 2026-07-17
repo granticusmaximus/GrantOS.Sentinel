@@ -14,6 +14,9 @@ public interface IOllamaChatService
     /// <summary>Sends a chat request and returns the full assistant reply (non-streaming).</summary>
     Task<OllamaChatResponse> ChatAsync(OllamaChatRequest request, CancellationToken ct = default);
 
-    /// <summary>Streams the assistant reply as incremental content deltas.</summary>
-    IAsyncEnumerable<string> StreamChatAsync(OllamaChatRequest request, CancellationToken ct = default);
+    /// <summary>
+    /// Streams the assistant turn: content deltas as they arrive, plus a final tool-calls
+    /// event if the model requests one or more tool invocations instead of (or after) text.
+    /// </summary>
+    IAsyncEnumerable<OllamaStreamEvent> StreamChatAsync(OllamaChatRequest request, CancellationToken ct = default);
 }

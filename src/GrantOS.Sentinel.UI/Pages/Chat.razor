@@ -5,6 +5,7 @@
 @inject ISystemPromptService SystemPrompts
 @inject IModelProfileService ModelProfiles
 @inject IToolAuditService Audit
+@inject IEnumerable<IAgentTool> Tools
 @inject Microsoft.Extensions.Options.IOptions<SentinelOptions> SentinelOptions
 
 <div class="chat-page">
@@ -47,6 +48,17 @@
     {
         <div class="alert alert-danger">@_error</div>
     }
+    @if (_pendingApproval is not null)
+    {
+        <div class="alert alert-warn">
+            <div><strong>@_pendingApproval.ToolName</strong></div>
+            <div>@_pendingApproval.Description</div>
+            <div class="btn-row" style="margin-top:.5rem">
+                <button class="btn btn-primary btn-sm" @onclick="() => _pendingApproval.Decision.TrySetResult(true)">Approve</button>
+                <button class="btn btn-ghost btn-sm" @onclick="() => _pendingApproval.Decision.TrySetResult(false)">Deny</button>
+            </div>
+        </div>
+    }
 
     <div class="chat-stream">
         @if (_messages.Count == 0)
@@ -55,8 +67,8 @@
         }
         @foreach (var msg in _messages)
         {
-            <div class="msg @(msg.Role == ChatRole.User ? "user" : "assistant")">
-                <div class="who">@(msg.Role == ChatRole.User ? "you" : _selectedModel)</div>
+            <div class="msg @(msg.Role == ChatRole.User ? "user" : msg.Role == ChatRole.Tool ? "tool" : "assistant")">
+                <div class="who">@(msg.Role == ChatRole.User ? "you" : msg.Role == ChatRole.Tool ? $"🔧 {msg.ToolName}" : _selectedModel)</div>
                 <div class="@(_sending && msg == _messages[^1] && msg.Role == ChatRole.Assistant ? "cursor" : "")">@msg.Content</div>
             </div>
         }
@@ -84,6 +96,14 @@
     private bool _sending;
     private bool _online;
     private string? _error;
+    private PendingToolApproval? _pendingApproval;
+
+    private sealed class PendingToolApproval
+    {
+        public required string ToolName { get; init; }
+        public required string Description { get; init; }
+        public required TaskCompletionSource<bool> Decision { get; init; }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -143,41 +163,117 @@
         _messages.Add(userMessage);
         await Conversations.AddMessageAsync(_conversationId!.Value, ChatRole.User, userText, null);
 
-        var assistantMessage = new ChatMessage { Role = ChatRole.Assistant, Content = "" };
-        _messages.Add(assistantMessage);
-
-        var request = await BuildRequestAsync();
-        var success = false;
-
-        try
+        // A user turn can take several rounds: model replies with tool_calls, we run (or
+        // decline) them, feed the result back, and let the model continue - capped so a
+        // misbehaving model can't loop forever.
+        const int maxToolRounds = 5;
+        for (var round = 0; round <= maxToolRounds; round++)
         {
-            await foreach (var delta in Ollama.StreamChatAsync(request))
+            var assistantMessage = new ChatMessage { Role = ChatRole.Assistant, Content = "" };
+            _messages.Add(assistantMessage);
+
+            var request = await BuildRequestAsync();
+            var success = false;
+            IReadOnlyList<OllamaToolCall>? requestedToolCalls = null;
+
+            try
             {
-                assistantMessage.Content += delta;
-                await InvokeAsync(StateHasChanged);
+                await foreach (var evt in Ollama.StreamChatAsync(request))
+                {
+                    switch (evt)
+                    {
+                        case OllamaContentDelta delta:
+                            assistantMessage.Content += delta.Text;
+                            await InvokeAsync(StateHasChanged);
+                            break;
+                        case OllamaToolCallsReady toolCalls:
+                            requestedToolCalls = toolCalls.ToolCalls;
+                            break;
+                    }
+                }
+                success = true;
             }
-            success = true;
-        }
-        catch (Exception ex)
-        {
-            _error = $"The model call failed: {ex.Message}";
-        }
+            catch (Exception ex)
+            {
+                _error = $"The model call failed: {ex.Message}";
+            }
 
-        // Persist whatever we received (even a partial reply is worth keeping).
-        if (assistantMessage.Content.Length > 0)
-            await Conversations.AddMessageAsync(_conversationId.Value, ChatRole.Assistant, assistantMessage.Content, null);
-        else
-            _messages.Remove(assistantMessage);
+            // Persist whatever text we received (even a partial reply is worth keeping).
+            if (assistantMessage.Content.Length > 0)
+                await Conversations.AddMessageAsync(_conversationId.Value, ChatRole.Assistant, assistantMessage.Content, null);
+            else if (requestedToolCalls is null)
+                _messages.Remove(assistantMessage);
 
-        await Audit.LogAsync(
-            toolName: "ollama",
-            action: "chat",
-            parameters: $"model={_selectedModel}; scope={scope}",
-            result: success ? $"ok ({assistantMessage.Content.Length} chars)" : "failed",
-            success: success,
-            scope: scope);
+            await Audit.LogAsync(
+                toolName: "ollama",
+                action: "chat",
+                parameters: $"model={_selectedModel}; scope={scope}",
+                result: success ? $"ok ({assistantMessage.Content.Length} chars)" : "failed",
+                success: success,
+                scope: scope);
+
+            if (!success || requestedToolCalls is not { Count: > 0 })
+                break; // plain text reply or a failure - either way, this turn is over
+
+            await HandleToolCallsAsync(requestedToolCalls, scope);
+            // loop back: BuildRequestAsync will now include the tool result(s) so the model can continue
+        }
 
         _sending = false;
+    }
+
+    private async Task HandleToolCallsAsync(IReadOnlyList<OllamaToolCall> requestedToolCalls, ProjectScope scope)
+    {
+        foreach (var call in requestedToolCalls)
+        {
+            var tool = Tools.FirstOrDefault(t => t.Name == call.Function.Name);
+            string resultText;
+
+            if (tool is null)
+            {
+                resultText = $"Unknown tool '{call.Function.Name}'.";
+                await Audit.LogAsync(call.Function.Name, "unknown-tool", null, resultText, false, scope);
+            }
+            else
+            {
+                var description = tool.DescribeInvocation(call.Function.Arguments);
+                var approval = new PendingToolApproval
+                {
+                    ToolName = tool.Name,
+                    Description = description,
+                    Decision = new TaskCompletionSource<bool>()
+                };
+                _pendingApproval = approval;
+                await InvokeAsync(StateHasChanged);
+
+                var approved = await approval.Decision.Task;
+                _pendingApproval = null;
+
+                if (!approved)
+                {
+                    resultText = "The user denied this action.";
+                    await Audit.LogAsync(tool.Name, "denied", description, null, false, scope);
+                }
+                else
+                {
+                    var result = await tool.ExecuteAsync(call.Function.Arguments);
+                    resultText = result.Output;
+                    await Audit.LogAsync(tool.Name, "execute", description, result.Output, result.Success, scope);
+                }
+            }
+
+            var toolArgsJson = call.Function.Arguments.GetRawText();
+            var toolMessage = new ChatMessage
+            {
+                Role = ChatRole.Tool,
+                Content = resultText,
+                ToolName = call.Function.Name,
+                ToolArguments = toolArgsJson
+            };
+            _messages.Add(toolMessage);
+            await Conversations.AddMessageAsync(_conversationId!.Value, ChatRole.Tool, resultText, null, call.Function.Name, toolArgsJson);
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private async Task<OllamaChatRequest> BuildRequestAsync()
@@ -194,7 +290,15 @@
         foreach (var m in _messages.Where(m => m.Role != ChatRole.System))
         {
             if (m.Role == ChatRole.Assistant && string.IsNullOrEmpty(m.Content)) continue; // skip the pending placeholder
-            wire.Add(new OllamaMessage(m.Role == ChatRole.User ? "user" : "assistant", m.Content));
+            var role = m.Role switch
+            {
+                ChatRole.User => "user",
+                ChatRole.Tool => "tool",
+                _ => "assistant"
+            };
+            wire.Add(m.Role == ChatRole.Tool
+                ? new OllamaMessage(role, m.Content) { ToolName = m.ToolName }
+                : new OllamaMessage(role, m.Content));
         }
 
         var profile = (await ModelProfiles.ListAsync()).FirstOrDefault(p => p.Name == _selectedModel);
@@ -202,6 +306,25 @@
             ? null
             : new OllamaOptions { NumCtx = profile.ContextLength, Temperature = profile.Temperature };
 
-        return new OllamaChatRequest { Model = _selectedModel, Messages = wire, Stream = true, Options = options };
+        var toolDefs = Tools
+            .Select(t => new OllamaToolDefinition
+            {
+                Function = new OllamaFunctionDefinition
+                {
+                    Name = t.Name,
+                    Description = t.Description,
+                    Parameters = t.ParametersSchema
+                }
+            })
+            .ToList();
+
+        return new OllamaChatRequest
+        {
+            Model = _selectedModel,
+            Messages = wire,
+            Stream = true,
+            Options = options,
+            Tools = toolDefs.Count > 0 ? toolDefs : null
+        };
     }
 }

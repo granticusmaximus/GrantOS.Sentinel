@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace GrantOS.Sentinel.Application.Models;
@@ -10,7 +11,54 @@ namespace GrantOS.Sentinel.Application.Models;
 /// <summary>A single message in the Ollama chat format.</summary>
 public sealed record OllamaMessage(
     [property: JsonPropertyName("role")] string Role,
-    [property: JsonPropertyName("content")] string Content);
+    [property: JsonPropertyName("content")] string Content)
+{
+    /// <summary>Set on incoming assistant messages when the model requests tool calls.</summary>
+    [JsonPropertyName("tool_calls")]
+    public IReadOnlyList<OllamaToolCall>? ToolCalls { get; init; }
+
+    /// <summary>Set on outgoing role:"tool" messages - which tool this result came from.</summary>
+    [JsonPropertyName("tool_name")]
+    public string? ToolName { get; init; }
+}
+
+/// <summary>One tool invocation the model is requesting, per Ollama's tool-calling contract.</summary>
+public sealed record OllamaToolCall
+{
+    [JsonPropertyName("function")]
+    public required OllamaToolCallFunction Function { get; init; }
+}
+
+public sealed record OllamaToolCallFunction
+{
+    [JsonPropertyName("name")]
+    public required string Name { get; init; }
+
+    [JsonPropertyName("arguments")]
+    public JsonElement Arguments { get; init; }
+}
+
+/// <summary>A tool definition advertised to Ollama in the request's "tools" array.</summary>
+public sealed record OllamaToolDefinition
+{
+    [JsonPropertyName("type")]
+    public string Type { get; init; } = "function";
+
+    [JsonPropertyName("function")]
+    public required OllamaFunctionDefinition Function { get; init; }
+}
+
+public sealed record OllamaFunctionDefinition
+{
+    [JsonPropertyName("name")]
+    public required string Name { get; init; }
+
+    [JsonPropertyName("description")]
+    public required string Description { get; init; }
+
+    [JsonPropertyName("parameters")]
+    public required JsonElement Parameters { get; init; }
+}
 
 /// <summary>Inference knobs sent under the request's "options" object.</summary>
 public sealed record OllamaOptions
@@ -36,6 +84,9 @@ public sealed record OllamaChatRequest
 
     [JsonPropertyName("options")]
     public OllamaOptions? Options { get; init; }
+
+    [JsonPropertyName("tools")]
+    public IReadOnlyList<OllamaToolDefinition>? Tools { get; init; }
 }
 
 /// <summary>
