@@ -131,6 +131,8 @@
     [Parameter] public int? ConversationId { get; set; }
     [SupplyParameterFromQuery(Name = "prompt")]
     [Parameter] public string? Prompt { get; set; }
+    [SupplyParameterFromQuery(Name = "scope")]
+    [Parameter] public ProjectScope? RequestedScope { get; set; }
 
     private readonly List<ChatMessage> _messages = [];
     private List<string> _models = [];
@@ -168,7 +170,7 @@
             _input = Prompt.Trim();
 
         _useMemory = MemoryRetrievalOptions.Value.Enabled;
-        _scope = SentinelOptions.Value.DefaultScope;
+        _scope = RequestedScope ?? SentinelOptions.Value.DefaultScope;
         _online = await Ollama.IsAvailableAsync();
         _prompts = [.. await SystemPrompts.ListAsync()];
         _selectedPromptId = (await SystemPrompts.GetDefaultAsync())?.Id;

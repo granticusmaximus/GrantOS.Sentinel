@@ -149,6 +149,22 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .badge-default { color: var(--accent); border-color: var(--accent-dim); }
 .empty { color: var(--text-faint); text-align: center; padding: 2.5rem 1rem; border: 1px dashed var(--border); border-radius: var(--radius); }
 
+/* Unified knowledge catalog */
+.knowledge-toolbar { display: flex; align-items: flex-end; gap: .75rem; margin-bottom: 1rem; }
+.knowledge-toolbar .field { flex: 1; }
+.knowledge-toolbar .field.compact { flex: 0 0 155px; }
+.knowledge-toolbar label { margin-top: 0; }
+.knowledge-summary { display: flex; align-items: center; flex-wrap: wrap; gap: .35rem; margin: 0 0 .8rem; color: var(--text-dim); font-size: .85rem; }
+.knowledge-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: .75rem; }
+.knowledge-item { min-width: 0; background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); padding: .9rem 1rem; }
+.knowledge-item-header { display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; }
+.knowledge-item h3 { margin: .3rem 0 .2rem; font-size: .98rem; }
+.source-badge { display: inline-block; font-family: var(--mono); font-size: .62rem; text-transform: uppercase; letter-spacing: .05em; border: 1px solid; border-radius: 4px; padding: .08rem .35rem; }
+.source-badge.memory { color: var(--accent); border-color: var(--accent-dim); }
+.source-badge.project { color: var(--warn); border-color: rgba(224,179,65,.55); }
+.knowledge-location { margin-top: .4rem; color: var(--text-dim); font-family: var(--mono); font-size: .7rem; overflow-wrap: anywhere; }
+.knowledge-preview { max-height: 220px; overflow: auto; margin: .65rem 0; padding: .65rem; border: 1px solid var(--border-soft); border-radius: 5px; background: var(--bg); color: var(--text-dim); font-family: var(--mono); font-size: .72rem; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+
 /* Alerts */
 .alert { border-radius: 6px; padding: .7rem .9rem; font-size: .85rem; margin: .75rem 0; border: 1px solid; }
 .alert-warn { background: rgba(224,179,65,.08); border-color: var(--warn); color: var(--warn); }
@@ -247,4 +263,6 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
     .sidebar { width: 64px; }
     .brand-text, .nav-link em, .nav-label, .sidebar-footer { display: none; }
     .app-content { padding: 1.25rem; }
+    .knowledge-toolbar { align-items: stretch; flex-direction: column; }
+    .knowledge-toolbar .field.compact { flex-basis: auto; width: 100%; }
 }

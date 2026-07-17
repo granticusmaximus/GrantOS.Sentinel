@@ -1,0 +1,108 @@
+@page "/knowledge"
+@inject IKnowledgeService KnowledgeService
+@inject NavigationManager Nav
+@inject Microsoft.Extensions.Options.IOptions<SentinelOptions> SentinelOptions
+
+<h1>Knowledge</h1>
+<p class="page-sub">Search durable Memory notes and indexed Project files from one scope-safe catalog.</p>
+
+<div class="knowledge-toolbar card">
+    <div class="field">
+        <label>Search</label>
+        <input type="text" placeholder="Title, tag, path, symbol, or content…" @bind="_query" @bind:event="oninput" @bind:after="Search" />
+    </div>
+    <div class="field compact">
+        <label>Scope</label>
+        <select @bind="_scope" @bind:after="Search">
+            @foreach (var scope in Enum.GetValues<ProjectScope>())
+            {
+                <option value="@scope">@scope</option>
+            }
+        </select>
+    </div>
+    <div class="field compact">
+        <label>Source</label>
+        <select @bind="_source" @bind:after="Search">
+            @foreach (var source in Enum.GetValues<KnowledgeSourceKind>())
+            {
+                <option value="@source">@(source == KnowledgeSourceKind.All ? "All sources" : source)</option>
+            }
+        </select>
+    </div>
+</div>
+
+@if (_result is null)
+{
+    <p class="meta">loading…</p>
+}
+else
+{
+    <div class="knowledge-summary">
+        <span>@_result.TotalMatches.ToString("N0") matches</span>
+        <span class="tag">@_result.MemoryMatches.ToString("N0") memory</span>
+        <span class="tag">@_result.ProjectMatches.ToString("N0") project files</span>
+        @if (_result.Items.Count < _result.TotalMatches)
+        {
+            <span class="meta">showing the first @_result.Items.Count.ToString("N0")</span>
+        }
+    </div>
+
+    @if (_result.Items.Count == 0)
+    {
+        <div class="empty">No knowledge matches this search and scope.</div>
+    }
+    else
+    {
+        <div class="knowledge-grid">
+            @foreach (var item in _result.Items)
+            {
+                <article class="knowledge-item">
+                    <div class="knowledge-item-header">
+                        <div>
+                            <span class="source-badge @(item.Source == KnowledgeSourceKind.Memory ? "memory" : "project")">@item.Source</span>
+                            <h3>@(item.Pinned ? "📌 " : "")@item.Title</h3>
+                        </div>
+                        <button class="btn btn-sm" @onclick="() => AskChat(item)">Ask Chat</button>
+                    </div>
+                    <div class="meta">@item.SourceName · @item.Scope · @item.UpdatedAt.ToLocalTime().ToString("g")</div>
+                    @if (!string.IsNullOrWhiteSpace(item.Location))
+                    {
+                        <div class="knowledge-location">@item.Location</div>
+                    }
+                    <pre class="knowledge-preview">@item.ContentPreview</pre>
+                    <button class="btn btn-ghost btn-sm" @onclick="() => OpenSource(item)">
+                        @(item.Source == KnowledgeSourceKind.Memory ? "Open Memory" : "Open Projects")
+                    </button>
+                </article>
+            }
+        </div>
+    }
+}
+
+@code {
+    private string _query = "";
+    private ProjectScope _scope;
+    private KnowledgeSourceKind _source = KnowledgeSourceKind.All;
+    private KnowledgeSearchResult? _result;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _scope = SentinelOptions.Value.DefaultScope;
+        await Search();
+    }
+
+    private async Task Search() =>
+        _result = await KnowledgeService.SearchAsync(new KnowledgeSearchRequest(_query, _scope, _source));
+
+    private void AskChat(KnowledgeItem item)
+    {
+        var source = item.Source == KnowledgeSourceKind.Memory
+            ? $"memory note '{item.Title}'"
+            : $"project file '{item.SourceName}/{item.Location}'";
+        var prompt = $"Using the {source} as context, help me understand or apply it.";
+        Nav.NavigateTo($"chat?scope={_scope}&prompt={Uri.EscapeDataString(prompt)}");
+    }
+
+    private void OpenSource(KnowledgeItem item) =>
+        Nav.NavigateTo(item.Source == KnowledgeSourceKind.Memory ? "memory" : "projects");
+}

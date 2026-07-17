@@ -130,6 +130,8 @@ SQLite connection, and the serialization tests exercise the JSON contract direct
   relevant same-scope notes and shows which ones were added to the model context.
 - **Projects**: register allowlisted local source workspaces, index supported text files,
   and let Chat retrieve relevant same-scope code and documentation with source paths.
+- **Knowledge**: search Memory notes and indexed Project files together with source and
+  scope filters, content previews, attribution, and a direct handoff to Chat.
 - **System Prompts**: manage prompts and set which one is the default.
 - **Models**: see models actually installed in Ollama (live) alongside your saved profiles.
 - **Agent tools**: supported Ollama models can propose shell commands and allowlisted file
@@ -213,7 +215,7 @@ untrusted reference data. The Chat toolbar can disable memory for an individual 
 
 - Split the localhost API into its own `GrantOS.Sentinel.Api` host and add auth before it
   ever leaves loopback.
-- Knowledge base and project standards (the remaining "soon" nav items).
+- Project standards (the remaining "soon" nav item).
 
 ## Configuration reference
 

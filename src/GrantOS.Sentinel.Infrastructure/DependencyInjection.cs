@@ -41,6 +41,7 @@ public static class DependencyInjection
         services.AddScoped<IModelProfileService, ModelProfileService>();
         services.AddScoped<IToolAuditService, ToolAuditService>();
         services.AddScoped<IProjectWorkspaceService, ProjectWorkspaceService>();
+        services.AddScoped<IKnowledgeService, KnowledgeService>();
 
         // Agentic tools the model can request (each gated by user approval in the UI).
         services.AddSingleton<FileSystemPathPolicy>();
