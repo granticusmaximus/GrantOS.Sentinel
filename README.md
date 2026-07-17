@@ -125,7 +125,8 @@ SQLite connection, and the serialization tests exercise the JSON contract direct
 - **Chat**: pick a model and (optionally) a system prompt, type a message, and watch the
   reply stream in token by token. The thread is saved the moment you send the first message.
 - **Conversations**: your saved threads are listed; open one to reload it, or delete it.
-- **Memory**: create, edit, search, pin, and delete notes.
+- **Memory**: create, edit, search, pin, and delete notes. Chat automatically retrieves
+  relevant same-scope notes and shows which ones were added to the model context.
 - **System Prompts**: manage prompts and set which one is the default.
 - **Models**: see models actually installed in Ollama (live) alongside your saved profiles.
 - **Agent tools**: supported Ollama models can propose shell commands and allowlisted file
@@ -189,6 +190,11 @@ Tool-calling support depends on the selected Ollama model. Sentinel queries the 
 capabilities and only sends tool definitions to compatible models. `qwen3:14b` was verified
 locally; some models may support ordinary chat but not structured tool calls.
 
+Memory retrieval is local and deterministic: title, tag, and category matches rank above
+content-only matches, pinned notes receive a priority boost, and Personal/Work scopes never
+mix. Retrieved notes are serialized into a bounded system context and explicitly marked as
+untrusted reference data. The Chat toolbar can disable memory for an individual session.
+
 ## Honest caveats
 
 - The Electron/Blazor host builds and the automated test suite runs locally. The parked MAUI
@@ -201,7 +207,6 @@ locally; some models may support ordinary chat but not structured tool calls.
   ever leaves loopback.
 - Persist token counts and streaming metadata per message.
 - Knowledge base, project standards, and workspace indexing (the "soon" nav items).
-- Retrieval over the memory vault to feed relevant notes into prompts automatically.
 
 ## Configuration reference
 
@@ -216,6 +221,13 @@ locally; some models may support ordinary chat but not structured tool calls.
     "TimeoutSeconds": 300
   },
   "Sentinel": { "DefaultScope": "Personal" },
+  "MemoryRetrieval": {
+    "Enabled": true,
+    "MaxEntries": 5,
+    "MinimumScore": 2,
+    "MaxContextCharacters": 6000,
+    "MaxEntryContentCharacters": 1500
+  },
   "Agent": {
     "AllowedDirectories": ["."],
     "MaxReadBytes": 262144,

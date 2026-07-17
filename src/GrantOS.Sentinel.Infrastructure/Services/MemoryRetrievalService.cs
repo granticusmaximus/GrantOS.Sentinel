@@ -94,6 +94,7 @@ public sealed partial class MemoryRetrievalService(
 
     private static HashSet<string> Tokenize(string query) =>
         WordPattern().Matches(query)
+            .Cast<Match>()
             .Select(match => match.Value.ToLowerInvariant())
             .Where(term => term.Length >= 2 && !StopWords.Contains(term))
             .ToHashSet(StringComparer.Ordinal);
