@@ -11,6 +11,13 @@ public interface IOllamaChatService
     /// <summary>Lists locally installed models. Returns an empty list if Ollama is unreachable.</summary>
     Task<IReadOnlyList<OllamaModelInfo>> ListModelsAsync(CancellationToken ct = default);
 
+    /// <summary>
+    /// True if this model declares "tools" in its /api/show capabilities. Ollama returns an
+    /// HTTP 400 for the whole chat request if a "tools" array is sent to a model that doesn't
+    /// support it, so callers must check this before attaching tool definitions.
+    /// </summary>
+    Task<bool> SupportsToolCallingAsync(string model, CancellationToken ct = default);
+
     /// <summary>Sends a chat request and returns the full assistant reply (non-streaming).</summary>
     Task<OllamaChatResponse> ChatAsync(OllamaChatRequest request, CancellationToken ct = default);
 

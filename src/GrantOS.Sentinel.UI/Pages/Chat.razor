@@ -97,6 +97,7 @@
     private bool _online;
     private string? _error;
     private PendingToolApproval? _pendingApproval;
+    private readonly Dictionary<string, bool> _toolSupportByModel = [];
 
     private sealed class PendingToolApproval
     {
@@ -306,17 +307,23 @@
             ? null
             : new OllamaOptions { NumCtx = profile.ContextLength, Temperature = profile.Temperature };
 
-        var toolDefs = Tools
-            .Select(t => new OllamaToolDefinition
-            {
-                Function = new OllamaFunctionDefinition
+        // Ollama returns a 400 for the *whole* request if "tools" is sent to a model that
+        // doesn't declare tool-calling support (confirmed live: gemma3 rejects it outright),
+        // so this has to be checked per model before attaching anything.
+        var modelSupportsTools = await SupportsToolsAsync(_selectedModel);
+        var toolDefs = modelSupportsTools
+            ? Tools
+                .Select(t => new OllamaToolDefinition
                 {
-                    Name = t.Name,
-                    Description = t.Description,
-                    Parameters = t.ParametersSchema
-                }
-            })
-            .ToList();
+                    Function = new OllamaFunctionDefinition
+                    {
+                        Name = t.Name,
+                        Description = t.Description,
+                        Parameters = t.ParametersSchema
+                    }
+                })
+                .ToList()
+            : [];
 
         return new OllamaChatRequest
         {
@@ -326,5 +333,15 @@
             Options = options,
             Tools = toolDefs.Count > 0 ? toolDefs : null
         };
+    }
+
+    private async Task<bool> SupportsToolsAsync(string model)
+    {
+        if (_toolSupportByModel.TryGetValue(model, out var cached))
+            return cached;
+
+        var supported = await Ollama.SupportsToolCallingAsync(model);
+        _toolSupportByModel[model] = supported;
+        return supported;
     }
 }

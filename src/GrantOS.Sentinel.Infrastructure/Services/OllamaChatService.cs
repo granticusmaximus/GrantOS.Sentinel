@@ -43,6 +43,24 @@ public sealed class OllamaChatService(HttpClient http, ILogger<OllamaChatService
         }
     }
 
+    public async Task<bool> SupportsToolCallingAsync(string model, CancellationToken ct = default)
+    {
+        try
+        {
+            using var response = await http.PostAsJsonAsync("/api/show", new OllamaShowRequest { Model = model }, Json, ct);
+            if (!response.IsSuccessStatusCode)
+                return false;
+
+            var show = await response.Content.ReadFromJsonAsync<OllamaShowResponse>(Json, ct);
+            return show?.Capabilities.Contains("tools") ?? false;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Could not determine tool-calling support for {Model}", model);
+            return false;
+        }
+    }
+
     public async Task<OllamaChatResponse> ChatAsync(OllamaChatRequest request, CancellationToken ct = default)
     {
         var body = request with { Stream = false };

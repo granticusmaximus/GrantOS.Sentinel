@@ -138,3 +138,20 @@ public sealed record OllamaModelDetails
     [JsonPropertyName("quantization_level")]
     public string? QuantizationLevel { get; init; }
 }
+
+/// <summary>Body of POST /api/show.</summary>
+public sealed record OllamaShowRequest
+{
+    [JsonPropertyName("model")]
+    public required string Model { get; init; }
+}
+
+/// <summary>
+/// Response from POST /api/show. Only the field this app needs (Capabilities) is mapped -
+/// Ollama sends more (modelfile, parameters, template, ...) that we don't care about.
+/// </summary>
+public sealed record OllamaShowResponse
+{
+    [JsonPropertyName("capabilities")]
+    public IReadOnlyList<string> Capabilities { get; init; } = [];
+}
