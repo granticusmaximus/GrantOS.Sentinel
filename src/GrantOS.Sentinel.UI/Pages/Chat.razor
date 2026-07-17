@@ -353,13 +353,23 @@
         if (message.TokenCount is int responseTokens)
             parts.Add($"{responseTokens:N0} generated");
         if (message.TotalDurationNanoseconds is long totalNanoseconds)
-            parts.Add($"{TimeSpan.FromTicks(totalNanoseconds / 100):g}");
+            parts.Add(FormatDuration(totalNanoseconds));
         if (message.TokenCount is > 0 && message.EvalDurationNanoseconds is > 0)
         {
             var tokensPerSecond = message.TokenCount.Value / (message.EvalDurationNanoseconds.Value / 1_000_000_000d);
             parts.Add($"{tokensPerSecond:F1} tok/s");
         }
         return string.Join(" · ", parts);
+    }
+
+    private static string FormatDuration(long nanoseconds)
+    {
+        var duration = TimeSpan.FromTicks(nanoseconds / 100);
+        return duration.TotalMinutes >= 1
+            ? $"{duration.TotalMinutes:F1}m"
+            : duration.TotalSeconds >= 1
+                ? $"{duration.TotalSeconds:F1}s"
+                : $"{duration.TotalMilliseconds:F0}ms";
     }
 
     private async Task HandleToolCallsAsync(IReadOnlyList<OllamaToolCall> requestedToolCalls, ProjectScope scope)

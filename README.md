@@ -22,7 +22,7 @@ src/
   GrantOS.Sentinel.Web              Blazor Server host + Electron.NET + localhost API
   GrantOS.Sentinel.Maui             parked Mac Catalyst host (toolchain-blocked)
 tests/
-  GrantOS.Sentinel.Tests            xUnit: memory service + Ollama serialization
+  GrantOS.Sentinel.Tests            xUnit: services, tools, persistence + Ollama contract
 ```
 
 The dependency rule points inward: Web and Infrastructure depend on Application and
@@ -123,7 +123,8 @@ SQLite connection, and the serialization tests exercise the JSON contract direct
 - **Dashboard** shows an Ollama status pill (online/offline), plus counts of installed
   models, conversations, and memory entries.
 - **Chat**: pick a model and (optionally) a system prompt, type a message, and watch the
-  reply stream in token by token. The thread is saved the moment you send the first message.
+  reply stream in token by token. The thread is saved the moment you send the first message,
+  including Ollama's prompt/output token counts, elapsed time, and generation speed.
 - **Conversations**: your saved threads are listed; open one to reload it, or delete it.
 - **Memory**: create, edit, search, pin, and delete notes. Chat automatically retrieves
   relevant same-scope notes and shows which ones were added to the model context.
