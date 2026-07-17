@@ -18,6 +18,15 @@ public class ChatMessage
 
     /// <summary>Output token count reported by Ollama (assistant messages), if known.</summary>
     public int? TokenCount { get; set; }
+
+    /// <summary>Input token count reported by Ollama, including the assembled conversation context.</summary>
+    public int? PromptTokenCount { get; set; }
+
+    /// <summary>Ollama timings are persisted in nanoseconds to preserve the API's original precision.</summary>
+    public long? TotalDurationNanoseconds { get; set; }
+    public long? LoadDurationNanoseconds { get; set; }
+    public long? PromptEvalDurationNanoseconds { get; set; }
+    public long? EvalDurationNanoseconds { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public Conversation? Conversation { get; set; }

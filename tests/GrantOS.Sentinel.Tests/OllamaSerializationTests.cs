@@ -49,9 +49,9 @@ public sealed class OllamaSerializationTests
     }
 
     [Fact]
-    public void FinalChunk_reads_eval_counts_from_snake_case()
+    public void FinalChunk_reads_generation_metrics_from_snake_case()
     {
-        const string line = """{"message":{"role":"assistant","content":""},"done":true,"eval_count":42,"prompt_eval_count":7}""";
+        const string line = """{"message":{"role":"assistant","content":""},"done":true,"eval_count":42,"prompt_eval_count":7,"total_duration":3500000000,"load_duration":100000000,"prompt_eval_duration":400000000,"eval_duration":3000000000}""";
 
         var chunk = JsonSerializer.Deserialize<OllamaChatResponse>(line, Json);
 
@@ -59,6 +59,10 @@ public sealed class OllamaSerializationTests
         Assert.True(chunk!.Done);
         Assert.Equal(42, chunk.EvalCount);
         Assert.Equal(7, chunk.PromptEvalCount);
+        Assert.Equal(3_500_000_000, chunk.TotalDurationNanoseconds);
+        Assert.Equal(100_000_000, chunk.LoadDurationNanoseconds);
+        Assert.Equal(400_000_000, chunk.PromptEvalDurationNanoseconds);
+        Assert.Equal(3_000_000_000, chunk.EvalDurationNanoseconds);
     }
 
     [Fact]

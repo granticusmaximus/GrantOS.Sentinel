@@ -128,6 +128,13 @@ public sealed class OllamaChatService(HttpClient http, ILogger<OllamaChatService
             {
                 if (toolCalls is { Count: > 0 })
                     yield return new OllamaToolCallsReady(toolCalls);
+                yield return new OllamaGenerationCompleted(
+                    chunk.PromptEvalCount,
+                    chunk.EvalCount,
+                    chunk.TotalDurationNanoseconds,
+                    chunk.LoadDurationNanoseconds,
+                    chunk.PromptEvalDurationNanoseconds,
+                    chunk.EvalDurationNanoseconds);
                 yield break;
             }
         }

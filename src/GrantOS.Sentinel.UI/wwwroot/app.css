@@ -174,6 +174,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
     box-shadow: 0 1px 1px rgba(0,0,0,.15);
 }
 .msg .who { font-size: .64rem; color: var(--text-faint); margin-bottom: .2rem; opacity: .7; }
+.msg .generation-meta { font-family: var(--mono); font-size: .64rem; color: var(--text-faint); margin-top: .4rem; opacity: .8; }
 
 /* Sent (you) - iMessage blue, tucked to the right, tail on the bottom-right corner */
 .msg.user {

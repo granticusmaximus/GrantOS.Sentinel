@@ -89,6 +89,10 @@
             <div class="msg @(msg.Role == ChatRole.User ? "user" : msg.Role == ChatRole.Tool ? "tool" : "assistant")">
                 <div class="who">@(msg.Role == ChatRole.User ? "you" : msg.Role == ChatRole.Tool ? $"🔧 {msg.ToolName}" : _selectedModel)</div>
                 <div class="@(_sending && msg == _messages[^1] && msg.Role == ChatRole.Assistant ? "cursor" : "")">@msg.Content</div>
+                @if (msg.Role == ChatRole.Assistant && HasGenerationMetrics(msg))
+                {
+                    <div class="generation-meta">@FormatGenerationMetrics(msg)</div>
+                }
             </div>
         }
     </div>
@@ -270,6 +274,7 @@
             var request = await BuildRequestAsync();
             var success = false;
             IReadOnlyList<OllamaToolCall>? requestedToolCalls = null;
+            MessageGenerationMetrics? generationMetrics = null;
 
             try
             {
@@ -284,6 +289,16 @@
                         case OllamaToolCallsReady toolCalls:
                             requestedToolCalls = toolCalls.ToolCalls;
                             break;
+                        case OllamaGenerationCompleted completed:
+                            generationMetrics = new MessageGenerationMetrics(
+                                completed.PromptTokenCount,
+                                completed.ResponseTokenCount,
+                                completed.TotalDurationNanoseconds,
+                                completed.LoadDurationNanoseconds,
+                                completed.PromptEvalDurationNanoseconds,
+                                completed.EvalDurationNanoseconds);
+                            ApplyGenerationMetrics(assistantMessage, generationMetrics);
+                            break;
                     }
                 }
                 success = true;
@@ -295,7 +310,7 @@
 
             // Persist whatever text we received (even a partial reply is worth keeping).
             if (assistantMessage.Content.Length > 0)
-                await Conversations.AddMessageAsync(_conversationId.Value, ChatRole.Assistant, assistantMessage.Content, null);
+                await Conversations.AddMessageAsync(_conversationId.Value, ChatRole.Assistant, assistantMessage.Content, generationMetrics);
             else if (requestedToolCalls is null)
                 _messages.Remove(assistantMessage);
 
@@ -315,6 +330,36 @@
         }
 
         _sending = false;
+    }
+
+    private static void ApplyGenerationMetrics(ChatMessage message, MessageGenerationMetrics metrics)
+    {
+        message.PromptTokenCount = metrics.PromptTokenCount;
+        message.TokenCount = metrics.ResponseTokenCount;
+        message.TotalDurationNanoseconds = metrics.TotalDurationNanoseconds;
+        message.LoadDurationNanoseconds = metrics.LoadDurationNanoseconds;
+        message.PromptEvalDurationNanoseconds = metrics.PromptEvalDurationNanoseconds;
+        message.EvalDurationNanoseconds = metrics.EvalDurationNanoseconds;
+    }
+
+    private static bool HasGenerationMetrics(ChatMessage message) =>
+        message.PromptTokenCount.HasValue || message.TokenCount.HasValue || message.TotalDurationNanoseconds.HasValue;
+
+    private static string FormatGenerationMetrics(ChatMessage message)
+    {
+        var parts = new List<string>();
+        if (message.PromptTokenCount is int promptTokens)
+            parts.Add($"{promptTokens:N0} prompt");
+        if (message.TokenCount is int responseTokens)
+            parts.Add($"{responseTokens:N0} generated");
+        if (message.TotalDurationNanoseconds is long totalNanoseconds)
+            parts.Add($"{TimeSpan.FromTicks(totalNanoseconds / 100):g}");
+        if (message.TokenCount is > 0 && message.EvalDurationNanoseconds is > 0)
+        {
+            var tokensPerSecond = message.TokenCount.Value / (message.EvalDurationNanoseconds.Value / 1_000_000_000d);
+            parts.Add($"{tokensPerSecond:F1} tok/s");
+        }
+        return string.Join(" · ", parts);
     }
 
     private async Task HandleToolCallsAsync(IReadOnlyList<OllamaToolCall> requestedToolCalls, ProjectScope scope)

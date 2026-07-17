@@ -205,7 +205,6 @@ untrusted reference data. The Chat toolbar can disable memory for an individual 
 
 - Split the localhost API into its own `GrantOS.Sentinel.Api` host and add auth before it
   ever leaves loopback.
-- Persist token counts and streaming metadata per message.
 - Knowledge base, project standards, and workspace indexing (the "soon" nav items).
 
 ## Configuration reference

@@ -1,4 +1,5 @@
 using GrantOS.Sentinel.Application.Abstractions;
+using GrantOS.Sentinel.Application.Models;
 using GrantOS.Sentinel.Domain.Entities;
 using GrantOS.Sentinel.Domain.Enums;
 using GrantOS.Sentinel.Infrastructure.Persistence;
@@ -13,6 +14,7 @@ public sealed class ConversationService(IDbContextFactory<SentinelDbContext> fac
         await using var db = await factory.CreateDbContextAsync(ct);
         return await db.Conversations
             .AsNoTracking()
+            .Include(c => c.Messages)
             .OrderByDescending(c => c.UpdatedAt)
             .ToListAsync(ct);
     }
@@ -44,7 +46,7 @@ public sealed class ConversationService(IDbContextFactory<SentinelDbContext> fac
         return conversation;
     }
 
-    public async Task<ChatMessage> AddMessageAsync(int conversationId, ChatRole role, string content, int? tokenCount, string? toolName = null, string? toolArguments = null, CancellationToken ct = default)
+    public async Task<ChatMessage> AddMessageAsync(int conversationId, ChatRole role, string content, MessageGenerationMetrics? metrics = null, string? toolName = null, string? toolArguments = null, CancellationToken ct = default)
     {
         await using var db = await factory.CreateDbContextAsync(ct);
         var message = new ChatMessage
@@ -52,7 +54,12 @@ public sealed class ConversationService(IDbContextFactory<SentinelDbContext> fac
             ConversationId = conversationId,
             Role = role,
             Content = content,
-            TokenCount = tokenCount,
+            TokenCount = metrics?.ResponseTokenCount,
+            PromptTokenCount = metrics?.PromptTokenCount,
+            TotalDurationNanoseconds = metrics?.TotalDurationNanoseconds,
+            LoadDurationNanoseconds = metrics?.LoadDurationNanoseconds,
+            PromptEvalDurationNanoseconds = metrics?.PromptEvalDurationNanoseconds,
+            EvalDurationNanoseconds = metrics?.EvalDurationNanoseconds,
             ToolName = toolName,
             ToolArguments = toolArguments,
             CreatedAt = DateTime.UtcNow

@@ -106,6 +106,18 @@ public sealed record OllamaChatResponse
 
     [JsonPropertyName("prompt_eval_count")]
     public int? PromptEvalCount { get; init; }
+
+    [JsonPropertyName("total_duration")]
+    public long? TotalDurationNanoseconds { get; init; }
+
+    [JsonPropertyName("load_duration")]
+    public long? LoadDurationNanoseconds { get; init; }
+
+    [JsonPropertyName("prompt_eval_duration")]
+    public long? PromptEvalDurationNanoseconds { get; init; }
+
+    [JsonPropertyName("eval_duration")]
+    public long? EvalDurationNanoseconds { get; init; }
 }
 
 /// <summary>Response from GET /api/tags (locally installed models).</summary>
