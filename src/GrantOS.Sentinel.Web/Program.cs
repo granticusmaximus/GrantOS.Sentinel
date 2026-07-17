@@ -1,9 +1,11 @@
+using ElectronNET.API;
+using ElectronNET.API.Entities;
 using GrantOS.Sentinel.Infrastructure;
 using GrantOS.Sentinel.Infrastructure.Persistence;
 using GrantOS.Sentinel.UI;
-using GrantOS.Sentinel.Web.Components;
 using GrantOS.Sentinel.Web.Endpoints;
 using Microsoft.EntityFrameworkCore;
+using AppComponent = GrantOS.Sentinel.Web.Components.App;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,6 +15,17 @@ builder.Services.AddRazorComponents()
 
 // Everything data/Ollama related lives behind this single call.
 builder.Services.AddSentinelInfrastructure(builder.Configuration);
+
+// Wraps this app in a native Electron window. Calling UseElectron unconditionally commits
+// the whole process to Electron's hosting model (see WebHostBuilderExtensions.UseElectron):
+// plain http:// on a dynamic loopback port, always - there's no separate "just a browser on
+// a fixed port" mode once this is wired in.
+builder.UseElectron(args, async () =>
+{
+    var window = await Electron.WindowManager.CreateWindowAsync(
+        new BrowserWindowOptions { Show = false, Title = "GrantOS Sentinel" });
+    window.OnReadyToShow += () => window.Show();
+});
 
 var app = builder.Build();
 
@@ -30,10 +43,11 @@ await using (var scope = app.Services.CreateAsyncScope())
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    app.UseHsts();
 }
 
-app.UseHttpsRedirection();
+// No HSTS/HTTPS-redirect: this app only ever binds to plain http:// on a dynamic loopback
+// port under Electron's hosting model (see the UseElectron comment above) - there's no
+// HTTPS binding to redirect to.
 app.UseStaticFiles();
 app.UseAntiforgery();
 
@@ -42,7 +56,7 @@ app.MapSentinelApi();
 
 // Pages/Layout live in GrantOS.Sentinel.UI (shared with the Maui app), so the server-side
 // endpoint discovery that builds the route table needs to be told to scan that assembly too.
-app.MapRazorComponents<App>()
+app.MapRazorComponents<AppComponent>()
     .AddInteractiveServerRenderMode()
     .AddAdditionalAssemblies(typeof(Routes).Assembly);
 

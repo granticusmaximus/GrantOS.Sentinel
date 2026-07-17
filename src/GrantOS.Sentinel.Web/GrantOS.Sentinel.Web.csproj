@@ -1,4 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup Label="ElectronNetCommon">
+    <!-- Electron.NET has no separate manifest file - everything is driven by these MSBuild
+         properties (defaults come from ElectronNET.Core.props if omitted). -->
+    <Title>GrantOS Sentinel</Title>
+    <Product>com.grantos.sentinel</Product>
+    <ElectronPackageId>grantos-sentinel</ElectronPackageId>
+    <!-- The props default RuntimeIdentifier to win-x64; override for this Mac. -->
+    <RuntimeIdentifier>osx-arm64</RuntimeIdentifier>
+  </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\GrantOS.Sentinel.Application\GrantOS.Sentinel.Application.csproj" />
     <ProjectReference Include="..\GrantOS.Sentinel.Infrastructure\GrantOS.Sentinel.Infrastructure.csproj" />
@@ -10,5 +19,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <PackageReference Include="ElectronNET.Core" />
+    <PackageReference Include="ElectronNET.Core.AspNet" />
   </ItemGroup>
 </Project>
