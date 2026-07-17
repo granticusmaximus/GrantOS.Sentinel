@@ -7,6 +7,12 @@ using GrantOS.Sentinel.Web.Endpoints;
 using Microsoft.EntityFrameworkCore;
 using AppComponent = GrantOS.Sentinel.Web.Components.App;
 
+if (args is ["--install-playwright-browsers"])
+{
+    Environment.ExitCode = Microsoft.Playwright.Program.Main(["install", "chromium"]);
+    return;
+}
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Blazor Web App with interactive server rendering (simplest streaming-capable model for Phase 1).

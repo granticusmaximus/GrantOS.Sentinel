@@ -19,4 +19,13 @@ public sealed class AgentOptions
 
     /// <summary>Maximum number of entries returned by a directory listing.</summary>
     public int MaxDirectoryEntries { get; set; } = 200;
+
+    /// <summary>Maximum page-text characters returned to the model by the browser tool.</summary>
+    public int MaxBrowserTextCharacters { get; set; } = 50_000;
+
+    /// <summary>Timeout applied to individual browser actions.</summary>
+    public int BrowserTimeoutSeconds { get; set; } = 30;
+
+    /// <summary>Whether the controlled browser is hidden. Keep false for normal use.</summary>
+    public bool BrowserHeadless { get; set; }
 }

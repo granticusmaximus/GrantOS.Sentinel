@@ -49,6 +49,11 @@ Domain; Domain depends on nothing. Ollama's HTTP contract lives in exactly one c
    The app seeds four model profiles (`qwen2.5-coder` as default, plus `qwen3`,
    `gemma3`, `deepseek-r1`). Pull whichever you want to use; the Models page shows
    what you actually have installed versus what's just a saved profile.
+3. **Playwright Chromium** — required only for the browser-control tool. After restoring or
+   building the project, install its matching browser binary once:
+   ```bash
+   dotnet run --project src/GrantOS.Sentinel.Web -- --install-playwright-browsers
+   ```
 
 ## First-time setup
 
@@ -110,7 +115,8 @@ SQLite connection, and the serialization tests exercise the JSON contract direct
 - **System Prompts**: manage prompts and set which one is the default.
 - **Models**: see models actually installed in Ollama (live) alongside your saved profiles.
 - **Agent tools**: supported Ollama models can propose shell commands and allowlisted file
-  reads, writes, and directory listings. Each valid action waits for Approve or Deny.
+  reads, writes, directory listings, and visible-browser actions. Each valid action waits
+  for Approve or Deny.
 - **Audit**: every chat and proposed tool action is recorded with success/failure.
 
 If Ollama is offline, the app still loads — chat is disabled with a clear message, and the
@@ -201,7 +207,10 @@ locally; some models may support ordinary chat but not structured tool calls.
     "AllowedDirectories": ["."],
     "MaxReadBytes": 262144,
     "MaxWriteBytes": 1048576,
-    "MaxDirectoryEntries": 200
+    "MaxDirectoryEntries": 200,
+    "MaxBrowserTextCharacters": 50000,
+    "BrowserTimeoutSeconds": 30,
+    "BrowserHeadless": false
   }
 }
 ```

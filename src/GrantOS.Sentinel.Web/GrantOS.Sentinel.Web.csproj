@@ -21,5 +21,6 @@
     </PackageReference>
     <PackageReference Include="ElectronNET.Core" />
     <PackageReference Include="ElectronNET.Core.AspNet" />
+    <PackageReference Include="Microsoft.Playwright" />
   </ItemGroup>
 </Project>

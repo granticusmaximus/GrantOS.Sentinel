@@ -44,6 +44,7 @@ public static class DependencyInjection
         services.AddScoped<IAgentTool, ReadFileTool>();
         services.AddScoped<IAgentTool, WriteFileTool>();
         services.AddScoped<IAgentTool, ListDirectoryTool>();
+        services.AddScoped<IAgentTool, BrowserControlTool>();
 
         return services;
     }
