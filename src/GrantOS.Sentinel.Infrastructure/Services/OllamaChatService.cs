@@ -91,11 +91,13 @@ public sealed class OllamaChatService(HttpClient http, ILogger<OllamaChatService
         // defensively rather than assume.
         List<OllamaToolCall>? toolCalls = null;
 
-        while (!reader.EndOfStream)
+        while (true)
         {
             ct.ThrowIfCancellationRequested();
 
             var line = await reader.ReadLineAsync(ct);
+            if (line is null)
+                break;
             if (string.IsNullOrWhiteSpace(line))
                 continue;
 

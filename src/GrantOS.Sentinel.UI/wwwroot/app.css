@@ -158,6 +158,9 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .chat-toolbar { display: flex; gap: .75rem; align-items: flex-end; flex-wrap: wrap; padding-bottom: 1rem; border-bottom: 1px solid var(--border-soft); }
 .chat-toolbar .field { flex: 1; min-width: 160px; }
 .chat-toolbar label { margin-top: 0; }
+.chat-toolbar .memory-toggle { display: inline-flex; align-items: center; gap: .4rem; min-height: 34px; margin: 0; padding: 0 .2rem; white-space: nowrap; text-transform: none; letter-spacing: 0; }
+.chat-toolbar .memory-toggle input { accent-color: var(--accent); }
+.memory-context-note { display: flex; align-items: center; flex-wrap: wrap; gap: .3rem; padding: .45rem .5rem 0; color: var(--text-faint); font-family: var(--mono); font-size: .68rem; }
 .chat-stream { flex: 1; overflow-y: auto; padding: 1.5rem .5rem; display: flex; flex-direction: column; justify-content: flex-end; gap: .35rem; }
 
 .msg {

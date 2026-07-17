@@ -36,6 +36,11 @@ public static class MauiProgram
             ["Ollama:DefaultModel"] = "qwen2.5-coder",
             ["Ollama:TimeoutSeconds"] = "300",
             ["Sentinel:DefaultScope"] = "Personal",
+            ["MemoryRetrieval:Enabled"] = "true",
+            ["MemoryRetrieval:MaxEntries"] = "5",
+            ["MemoryRetrieval:MinimumScore"] = "2",
+            ["MemoryRetrieval:MaxContextCharacters"] = "6000",
+            ["MemoryRetrieval:MaxEntryContentCharacters"] = "1500",
         });
 
         // Same in-process DI wiring the Web project uses - no HTTP hop into a localhost API.

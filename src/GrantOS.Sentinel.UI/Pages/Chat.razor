@@ -4,11 +4,13 @@
 @implements IAsyncDisposable
 @inject IOllamaChatService Ollama
 @inject IConversationService Conversations
+@inject IMemoryRetrievalService MemoryRetrieval
 @inject ISystemPromptService SystemPrompts
 @inject IModelProfileService ModelProfiles
 @inject IToolAuditService Audit
 @inject IEnumerable<IAgentTool> Tools
 @inject Microsoft.Extensions.Options.IOptions<SentinelOptions> SentinelOptions
+@inject Microsoft.Extensions.Options.IOptions<MemoryRetrievalOptions> MemoryRetrievalOptions
 @inject IJSRuntime JS
 
 <div class="chat-page">
@@ -38,6 +40,10 @@
                 }
             </select>
         </div>
+        <label class="memory-toggle" title="Add relevant notes from the local Memory vault to the model context">
+            <input type="checkbox" @bind="_useMemory" disabled="@_sending" />
+            Use memory
+        </label>
         <button class="btn btn-ghost btn-sm" @onclick="ResetConversation" disabled="@_sending">New thread</button>
     </div>
 
@@ -50,6 +56,16 @@
     @if (_error is not null)
     {
         <div class="alert alert-danger">@_error</div>
+    }
+    @if (_retrievedMemory.Entries.Count > 0)
+    {
+        <div class="memory-context-note">
+            <span>Memory context</span>
+            @foreach (var memory in _retrievedMemory.Entries)
+            {
+                <span class="tag">@(memory.Pinned ? "📌 " : "")@memory.Title</span>
+            }
+        </div>
     }
     @if (_pendingApproval is not null)
     {
@@ -108,6 +124,9 @@
     private bool _sending;
     private bool _online;
     private string? _error;
+    private bool _useMemory;
+    private ProjectScope _scope;
+    private MemoryRetrievalResult _retrievedMemory = MemoryRetrievalResult.Empty;
     private PendingToolApproval? _pendingApproval;
     private readonly Dictionary<string, bool> _toolSupportByModel = [];
     private ElementReference _streamRef;
@@ -127,6 +146,8 @@
         if (!string.IsNullOrWhiteSpace(Prompt))
             _input = Prompt.Trim();
 
+        _useMemory = MemoryRetrievalOptions.Value.Enabled;
+        _scope = SentinelOptions.Value.DefaultScope;
         _online = await Ollama.IsAvailableAsync();
         _prompts = [.. await SystemPrompts.ListAsync()];
         _selectedPromptId = (await SystemPrompts.GetDefaultAsync())?.Id;
@@ -186,6 +207,7 @@
         var convo = await Conversations.GetAsync(id);
         if (convo is null) return;
         _conversationId = convo.Id;
+        _scope = convo.Scope;
         if (!string.IsNullOrWhiteSpace(convo.ModelName) && _models.Contains(convo.ModelName))
             _selectedModel = convo.ModelName;
         _selectedPromptId = convo.SystemPromptId;
@@ -196,7 +218,9 @@
     private void ResetConversation()
     {
         _conversationId = null;
+        _scope = SentinelOptions.Value.DefaultScope;
         _messages.Clear();
+        _retrievedMemory = MemoryRetrievalResult.Empty;
         _error = null;
     }
 
@@ -208,7 +232,7 @@
 
         var userText = _input.Trim();
         _input = "";
-        var scope = SentinelOptions.Value.DefaultScope;
+        var scope = _scope;
 
         // Persist the conversation on first message.
         if (_conversationId is null)
@@ -221,6 +245,18 @@
         var userMessage = new ChatMessage { Role = ChatRole.User, Content = userText };
         _messages.Add(userMessage);
         await Conversations.AddMessageAsync(_conversationId!.Value, ChatRole.User, userText, null);
+
+        try
+        {
+            _retrievedMemory = _useMemory
+                ? await MemoryRetrieval.RetrieveAsync(userText, scope)
+                : MemoryRetrievalResult.Empty;
+        }
+        catch (Exception ex)
+        {
+            _retrievedMemory = MemoryRetrievalResult.Empty;
+            _error = $"Memory retrieval was skipped: {ex.Message}";
+        }
 
         // A user turn can take several rounds: model replies with tool_calls, we run (or
         // decline) them, feed the result back, and let the model continue - capped so a
@@ -266,7 +302,7 @@
             await Audit.LogAsync(
                 toolName: "ollama",
                 action: "chat",
-                parameters: $"model={_selectedModel}; scope={scope}",
+                parameters: $"model={_selectedModel}; scope={scope}; memories={_retrievedMemory.Entries.Count}",
                 result: success ? $"ok ({assistantMessage.Content.Length} chars)" : "failed",
                 success: success,
                 scope: scope);
@@ -354,6 +390,9 @@
             if (prompt is not null)
                 wire.Add(new OllamaMessage("system", prompt.Content));
         }
+
+        if (!string.IsNullOrWhiteSpace(_retrievedMemory.PromptText))
+            wire.Add(new OllamaMessage("system", _retrievedMemory.PromptText));
 
         foreach (var m in _messages.Where(m => m.Role != ChatRole.System))
         {

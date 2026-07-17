@@ -17,6 +17,7 @@ public static class DependencyInjection
         services.Configure<OllamaClientOptions>(configuration.GetSection(OllamaClientOptions.SectionName));
         services.Configure<SentinelOptions>(configuration.GetSection(SentinelOptions.SectionName));
         services.Configure<AgentOptions>(configuration.GetSection(AgentOptions.SectionName));
+        services.Configure<MemoryRetrievalOptions>(configuration.GetSection(MemoryRetrievalOptions.SectionName));
 
         // SQLite via a context factory (short-lived contexts, safe for Blazor Server circuits).
         var connectionString = configuration.GetConnectionString("Sentinel")
@@ -34,6 +35,7 @@ public static class DependencyInjection
         // Application services.
         services.AddScoped<IConversationService, ConversationService>();
         services.AddScoped<IMemoryService, MemoryService>();
+        services.AddScoped<IMemoryRetrievalService, MemoryRetrievalService>();
         services.AddScoped<ISystemPromptService, SystemPromptService>();
         services.AddScoped<IModelProfileService, ModelProfileService>();
         services.AddScoped<IToolAuditService, ToolAuditService>();

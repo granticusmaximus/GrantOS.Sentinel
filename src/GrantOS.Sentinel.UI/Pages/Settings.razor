@@ -3,6 +3,7 @@
 @inject Microsoft.Extensions.Options.IOptions<OllamaClientOptions> OllamaOptions
 @inject Microsoft.Extensions.Options.IOptions<SentinelOptions> SentinelOptions
 @inject Microsoft.Extensions.Options.IOptions<AgentOptions> AgentOptions
+@inject Microsoft.Extensions.Options.IOptions<MemoryRetrievalOptions> MemoryRetrievalOptions
 
 <h1>Settings</h1>
 <p class="page-sub">Settings are read-only here and configured in <code>appsettings.json</code>.</p>
@@ -16,6 +17,8 @@
     <input type="text" value="@OllamaOptions.Value.TimeoutSeconds" readonly />
     <label>Default project scope</label>
     <input type="text" value="@SentinelOptions.Value.DefaultScope" readonly />
+    <label>Automatic memory retrieval</label>
+    <input type="text" value="@MemoryRetrievalSummary" readonly />
     <label>Filesystem access</label>
     <input type="text" value="@AllowedDirectoriesText" readonly />
     <label>File tool limits</label>
@@ -33,6 +36,9 @@
 
 @code {
     private bool _online;
+    private string MemoryRetrievalSummary => MemoryRetrievalOptions.Value.Enabled
+        ? $"Enabled · {MemoryRetrievalOptions.Value.MaxEntries} notes · {MemoryRetrievalOptions.Value.MaxContextCharacters:N0} characters"
+        : "Disabled";
     private string AllowedDirectoriesText => AgentOptions.Value.AllowedDirectories.Count == 0
         ? "Disabled"
         : string.Join(" · ", AgentOptions.Value.AllowedDirectories);
