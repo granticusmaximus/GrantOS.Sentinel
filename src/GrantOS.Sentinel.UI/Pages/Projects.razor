@@ -1,6 +1,7 @@
 @page "/projects"
 @inject IProjectWorkspaceService Workspaces
 @inject Microsoft.Extensions.Options.IOptions<SentinelOptions> SentinelOptions
+@implements IDisposable
 
 <h1>Projects</h1>
 <p class="page-sub">Index allowlisted local source workspaces so Chat can retrieve relevant code and documentation.</p>
@@ -17,6 +18,10 @@
             }
         </select>
         <button class="btn btn-primary" @onclick="Create" disabled="@(_busy || string.IsNullOrWhiteSpace(_rootPath))">Register and index</button>
+        @if (_busy)
+        {
+            <button class="btn btn-danger" @onclick="CancelIndex">Stop indexing</button>
+        }
     </div>
 </div>
 
@@ -27,6 +32,10 @@
 @if (_notice is not null)
 {
     <div class="alert alert-info">@_notice</div>
+}
+@if (_progress is not null)
+{
+    <div class="meta">Scanned @_progress.ScannedFiles.ToString("N0") files · @_progress.CurrentPath</div>
 }
 
 <h2>Indexed workspaces</h2>
@@ -76,6 +85,8 @@ else
     private bool _busy;
     private string? _error;
     private string? _notice;
+    private CancellationTokenSource? _indexCts;
+    private WorkspaceIndexProgress? _progress;
 
     protected override async Task OnInitializedAsync()
     {
@@ -90,7 +101,7 @@ else
         await RunAsync(async () =>
         {
             var workspace = await Workspaces.CreateAsync(_name, _rootPath, _scope);
-            var result = await Workspaces.IndexAsync(workspace.Id);
+            var result = await IndexWorkspaceAsync(workspace.Id);
             _name = "";
             _rootPath = "";
             _notice = $"Indexed {result.IndexedFiles:N0} files ({FormatBytes(result.IndexedBytes)}).";
@@ -101,7 +112,7 @@ else
     {
         await RunAsync(async () =>
         {
-            var result = await Workspaces.IndexAsync(id);
+            var result = await IndexWorkspaceAsync(id);
             _notice = $"Indexed {result.IndexedFiles:N0} files: {result.AddedFiles:N0} added, {result.UpdatedFiles:N0} updated, {result.RemovedFiles:N0} removed.";
         });
     }
@@ -124,6 +135,10 @@ else
         {
             await action();
         }
+        catch (OperationCanceledException)
+        {
+            _notice = "Indexing stopped. The last completed batch remains available.";
+        }
         catch (Exception ex)
         {
             _error = ex.Message;
@@ -132,7 +147,29 @@ else
         {
             await Reload();
             _busy = false;
+            _progress = null;
+            _indexCts?.Dispose();
+            _indexCts = null;
         }
+    }
+
+    private async Task<WorkspaceIndexResult> IndexWorkspaceAsync(int id)
+    {
+        _indexCts = new CancellationTokenSource();
+        var progress = new Progress<WorkspaceIndexProgress>(value =>
+        {
+            _progress = value;
+            _ = InvokeAsync(StateHasChanged);
+        });
+        return await Workspaces.IndexAsync(id, progress, _indexCts.Token);
+    }
+
+    private void CancelIndex() => _indexCts?.Cancel();
+
+    public void Dispose()
+    {
+        _indexCts?.Cancel();
+        _indexCts?.Dispose();
     }
 
     private static string FormatBytes(long bytes) => bytes switch

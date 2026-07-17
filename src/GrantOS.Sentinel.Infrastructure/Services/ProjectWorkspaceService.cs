@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.IO.Enumeration;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -59,16 +60,17 @@ public sealed partial class ProjectWorkspaceService(
         return workspace;
     }
 
-    public async Task<WorkspaceIndexResult> IndexAsync(int workspaceId, CancellationToken ct = default)
+    public async Task<WorkspaceIndexResult> IndexAsync(
+        int workspaceId,
+        IProgress<WorkspaceIndexProgress>? progress = null,
+        CancellationToken ct = default)
     {
         var settings = options.Value;
         if (!settings.Enabled)
             throw new InvalidOperationException("Workspace indexing is disabled in configuration.");
 
         await using var db = await factory.CreateDbContextAsync(ct);
-        var workspace = await db.ProjectWorkspaces
-            .Include(item => item.Documents)
-            .FirstOrDefaultAsync(item => item.Id == workspaceId, ct)
+        var workspace = await db.ProjectWorkspaces.FirstOrDefaultAsync(item => item.Id == workspaceId, ct)
             ?? throw new InvalidOperationException("Workspace not found.");
 
         if (!pathPolicy.TryResolve(workspace.RootPath, out var rootPath, out var error))
@@ -76,20 +78,40 @@ public sealed partial class ProjectWorkspaceService(
         if (!Directory.Exists(rootPath))
             throw new InvalidOperationException($"Workspace directory '{rootPath}' no longer exists.");
 
-        var existing = workspace.Documents.ToDictionary(
+        var existing = await db.ProjectDocuments
+            .AsNoTracking()
+            .Where(document => document.ProjectWorkspaceId == workspaceId)
+            .Select(document => new IndexedDocumentState(
+                document.Id, document.RelativePath, document.ContentHash,
+                document.SizeBytes, document.LastWriteTimeUtc))
+            .ToDictionaryAsync(
             document => document.RelativePath,
-            PathComparer);
+            PathComparer,
+            ct);
         var seen = new HashSet<string>(PathComparer);
         var added = 0;
         var updated = 0;
         long indexedBytes = 0;
         var now = DateTime.UtcNow;
+        var scanned = 0;
 
         foreach (var filePath in EnumerateIndexableFiles(rootPath, settings, ct))
         {
             ct.ThrowIfCancellationRequested();
             var relativePath = Path.GetRelativePath(rootPath, filePath).Replace(Path.DirectorySeparatorChar, '/');
             var file = new FileInfo(filePath);
+            scanned++;
+
+            if (existing.TryGetValue(relativePath, out var unchanged) &&
+                unchanged.SizeBytes == file.Length &&
+                unchanged.LastWriteTimeUtc == file.LastWriteTimeUtc)
+            {
+                seen.Add(relativePath);
+                indexedBytes += file.Length;
+                progress?.Report(new WorkspaceIndexProgress(scanned, seen.Count, relativePath));
+                continue;
+            }
+
             string content;
             try
             {
@@ -97,36 +119,58 @@ public sealed partial class ProjectWorkspaceService(
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DecoderFallbackException)
             {
+                if (existing.ContainsKey(relativePath))
+                {
+                    seen.Add(relativePath);
+                    indexedBytes += file.Length;
+                }
+                progress?.Report(new WorkspaceIndexProgress(scanned, seen.Count, relativePath));
                 continue;
             }
 
             if (content.IndexOf('\0') >= 0)
+            {
+                if (existing.ContainsKey(relativePath))
+                {
+                    seen.Add(relativePath);
+                    indexedBytes += file.Length;
+                }
+                progress?.Report(new WorkspaceIndexProgress(scanned, seen.Count, relativePath));
                 continue;
+            }
 
-            var contentHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(content)));
             seen.Add(relativePath);
             indexedBytes += file.Length;
+            progress?.Report(new WorkspaceIndexProgress(scanned, seen.Count, relativePath));
 
+            var contentHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(content)));
             if (existing.TryGetValue(relativePath, out var document))
             {
                 if (document.ContentHash == contentHash)
                 {
-                    document.SizeBytes = file.Length;
-                    document.LastWriteTimeUtc = file.LastWriteTimeUtc;
+                    await db.ProjectDocuments
+                        .Where(item => item.Id == document.Id)
+                        .ExecuteUpdateAsync(setters => setters
+                            .SetProperty(item => item.SizeBytes, file.Length)
+                            .SetProperty(item => item.LastWriteTimeUtc, file.LastWriteTimeUtc), ct);
                     continue;
                 }
 
-                document.Content = content;
-                document.ContentHash = contentHash;
-                document.SizeBytes = file.Length;
-                document.LastWriteTimeUtc = file.LastWriteTimeUtc;
-                document.IndexedAt = now;
+                await db.ProjectDocuments
+                    .Where(item => item.Id == document.Id)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(item => item.Content, content)
+                        .SetProperty(item => item.ContentHash, contentHash)
+                        .SetProperty(item => item.SizeBytes, file.Length)
+                        .SetProperty(item => item.LastWriteTimeUtc, file.LastWriteTimeUtc)
+                        .SetProperty(item => item.IndexedAt, now), ct);
                 updated++;
             }
             else
             {
-                workspace.Documents.Add(new ProjectDocument
+                db.ProjectDocuments.Add(new ProjectDocument
                 {
+                    ProjectWorkspaceId = workspace.Id,
                     RelativePath = relativePath,
                     Content = content,
                     ContentHash = contentHash,
@@ -136,12 +180,17 @@ public sealed partial class ProjectWorkspaceService(
                 });
                 added++;
             }
+
+            if ((added + updated) % 100 == 0)
+                await db.SaveChangesAsync(ct);
         }
 
-        var removedDocuments = workspace.Documents
-            .Where(document => document.Id != 0 && !seen.Contains(document.RelativePath))
-            .ToList();
-        db.ProjectDocuments.RemoveRange(removedDocuments);
+        var removedIds = existing.Values
+            .Where(document => !seen.Contains(document.RelativePath))
+            .Select(document => document.Id)
+            .ToArray();
+        if (removedIds.Length > 0)
+            await db.ProjectDocuments.Where(document => removedIds.Contains(document.Id)).ExecuteDeleteAsync(ct);
 
         workspace.IndexedFileCount = seen.Count;
         workspace.IndexedByteCount = indexedBytes;
@@ -149,7 +198,7 @@ public sealed partial class ProjectWorkspaceService(
         workspace.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
 
-        return new WorkspaceIndexResult(seen.Count, added, updated, removedDocuments.Count, indexedBytes);
+        return new WorkspaceIndexResult(seen.Count, added, updated, removedIds.Length, indexedBytes);
     }
 
     public async Task<ProjectRetrievalResult> RetrieveAsync(
@@ -166,22 +215,17 @@ public sealed partial class ProjectWorkspaceService(
             return ProjectRetrievalResult.Empty;
 
         await using var db = await factory.CreateDbContextAsync(ct);
-        var candidates = new Dictionary<int, ProjectDocument>();
-        foreach (var term in terms)
-        {
-            var matches = await db.ProjectDocuments
-                .AsNoTracking()
-                .Include(document => document.ProjectWorkspace)
-                .Where(document => document.ProjectWorkspace!.Scope == scope &&
-                    (document.RelativePath.ToLower().Contains(term) || document.Content.ToLower().Contains(term)))
-                .Take(50)
-                .ToListAsync(ct);
-            foreach (var match in matches)
-                candidates.TryAdd(match.Id, match);
-        }
+        var ftsQuery = string.Join(" OR ", terms.Select(term => $"\"{term.Replace("\"", "\"\"")}\"*"));
+        var matches = await db.ProjectDocuments
+            .FromSqlInterpolated($"SELECT d.* FROM ProjectDocuments d JOIN ProjectDocumentsFts f ON f.rowid = d.Id WHERE ProjectDocumentsFts MATCH {ftsQuery}")
+            .AsNoTracking()
+            .Include(document => document.ProjectWorkspace)
+            .Where(document => document.ProjectWorkspace!.Scope == scope)
+            .Take(200)
+            .ToListAsync(ct);
 
         var normalizedQuery = query.Trim().ToLowerInvariant();
-        var selected = candidates.Values
+        var selected = matches
             .Select(document => new
             {
                 Document = document,
@@ -220,6 +264,7 @@ public sealed partial class ProjectWorkspaceService(
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var ignoredDirectories = settings.IgnoredDirectories.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var includedFileNames = settings.IncludedFileNames.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var excludedPatterns = settings.ExcludedFilePatterns;
         var pending = new Stack<string>();
         pending.Push(rootPath);
         var yielded = 0;
@@ -256,6 +301,7 @@ public sealed partial class ProjectWorkspaceService(
                 var file = new FileInfo(filePath);
                 if (file.LinkTarget is not null ||
                     file.Length > Math.Max(1, settings.MaxFileBytes) ||
+                    excludedPatterns.Any(pattern => FileSystemName.MatchesSimpleExpression(pattern, file.Name, ignoreCase: true)) ||
                     (!extensions.Contains(file.Extension) && !includedFileNames.Contains(file.Name)) ||
                     !pathPolicy.TryResolve(filePath, out var resolvedPath, out _))
                     continue;
@@ -339,6 +385,13 @@ public sealed partial class ProjectWorkspaceService(
     private static StringComparer PathComparer => OperatingSystem.IsWindows()
         ? StringComparer.OrdinalIgnoreCase
         : StringComparer.Ordinal;
+
+    private sealed record IndexedDocumentState(
+        int Id,
+        string RelativePath,
+        string ContentHash,
+        long SizeBytes,
+        DateTime LastWriteTimeUtc);
 
     [GeneratedRegex(@"[\p{L}\p{N}][\p{L}\p{N}_.+#-]*", RegexOptions.CultureInvariant)]
     private static partial Regex WordPattern();

@@ -28,4 +28,9 @@ public sealed class WorkspaceIndexOptions
         ".git", ".svn", ".hg", ".idea", ".vs", ".vscode", "bin", "obj",
         "node_modules", "dist", "build", "coverage", ".next", ".nuxt", "vendor"
     ];
+    public List<string> ExcludedFilePatterns { get; set; } =
+    [
+        ".env*", ".npmrc", ".pypirc", "secrets.json", "appsettings.*.json",
+        "id_rsa*", "*.key", "*.pem", "*.pfx", "*.p12"
+    ];
 }

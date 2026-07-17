@@ -26,6 +26,7 @@ public sealed class TestDbContextFactory : IDbContextFactory<SentinelDbContext>,
 
         using var ctx = new SentinelDbContext(_options);
         ctx.Database.EnsureCreated();
+        KnowledgeFtsSchema.EnsureCreated(ctx);
     }
 
     public SentinelDbContext CreateDbContext() => new(_options);

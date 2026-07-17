@@ -31,11 +31,10 @@ public sealed partial class KnowledgeService(IDbContextFactory<SentinelDbContext
 
         if (request.Source is KnowledgeSourceKind.All or KnowledgeSourceKind.Memory)
         {
-            var query = db.MemoryEntries
-                .AsNoTracking()
-                .Where(memory => memory.Scope == request.Scope);
-            if (terms.Length > 0)
-                query = query.Where(BuildMemoryPredicate(terms));
+            var query = terms.Length == 0
+                ? db.MemoryEntries.AsNoTracking()
+                : db.MemoryEntries.FromSqlInterpolated($"SELECT m.* FROM MemoryEntries m JOIN MemoryEntriesFts f ON f.rowid = m.Id WHERE MemoryEntriesFts MATCH {BuildFtsQuery(terms)}").AsNoTracking();
+            query = query.Where(memory => memory.Scope == request.Scope);
 
             memoryMatches = await query.CountAsync(ct);
             var candidates = await query
@@ -48,12 +47,11 @@ public sealed partial class KnowledgeService(IDbContextFactory<SentinelDbContext
 
         if (request.Source is KnowledgeSourceKind.All or KnowledgeSourceKind.Project)
         {
-            var query = db.ProjectDocuments
-                .AsNoTracking()
+            var query = (terms.Length == 0
+                    ? db.ProjectDocuments.AsNoTracking()
+                    : db.ProjectDocuments.FromSqlInterpolated($"SELECT d.* FROM ProjectDocuments d JOIN ProjectDocumentsFts f ON f.rowid = d.Id WHERE ProjectDocumentsFts MATCH {BuildFtsQuery(terms)}").AsNoTracking())
                 .Include(document => document.ProjectWorkspace)
                 .Where(document => document.ProjectWorkspace!.Scope == request.Scope);
-            if (terms.Length > 0)
-                query = query.Where(BuildProjectPredicate(terms));
 
             projectMatches = await query.CountAsync(ct);
             var candidates = await query
@@ -65,11 +63,10 @@ public sealed partial class KnowledgeService(IDbContextFactory<SentinelDbContext
 
         if (request.Source is KnowledgeSourceKind.All or KnowledgeSourceKind.Standard)
         {
-            var query = db.ProjectStandards
-                .AsNoTracking()
-                .Where(standard => standard.Scope == request.Scope);
-            if (terms.Length > 0)
-                query = query.Where(BuildStandardPredicate(terms));
+            var query = terms.Length == 0
+                ? db.ProjectStandards.AsNoTracking()
+                : db.ProjectStandards.FromSqlInterpolated($"SELECT s.* FROM ProjectStandards s JOIN ProjectStandardsFts f ON f.rowid = s.Id WHERE ProjectStandardsFts MATCH {BuildFtsQuery(terms)}").AsNoTracking();
+            query = query.Where(standard => standard.Scope == request.Scope);
 
             standardMatches = await query.CountAsync(ct);
             var candidates = await query
@@ -113,6 +110,9 @@ public sealed partial class KnowledgeService(IDbContextFactory<SentinelDbContext
             memory.Pinned,
             true,
             ScoreMemory(memory, terms));
+
+    private static string BuildFtsQuery(IReadOnlyList<string> terms) =>
+        string.Join(" OR ", terms.Select(term => $"\"{term.Replace("\"", "\"\"")}\"*"));
 
     private static KnowledgeItem ToKnowledgeItem(ProjectDocument document, IReadOnlyList<string> terms) =>
         new(

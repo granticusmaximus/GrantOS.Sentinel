@@ -9,13 +9,20 @@ namespace GrantOS.Sentinel.Infrastructure.Services;
 
 public sealed class ConversationService(IDbContextFactory<SentinelDbContext> factory) : IConversationService
 {
-    public async Task<IReadOnlyList<Conversation>> ListAsync(CancellationToken ct = default)
+    public async Task<IReadOnlyList<ConversationSummary>> ListAsync(CancellationToken ct = default)
     {
         await using var db = await factory.CreateDbContextAsync(ct);
         return await db.Conversations
             .AsNoTracking()
-            .Include(c => c.Messages)
             .OrderByDescending(c => c.UpdatedAt)
+            .Select(c => new ConversationSummary(
+                c.Id,
+                c.Title,
+                c.ModelName,
+                c.Scope,
+                c.UpdatedAt,
+                c.Messages.Count,
+                c.Messages.Sum(message => message.TokenCount ?? 0)))
             .ToListAsync(ct);
     }
 
@@ -46,7 +53,7 @@ public sealed class ConversationService(IDbContextFactory<SentinelDbContext> fac
         return conversation;
     }
 
-    public async Task<ChatMessage> AddMessageAsync(int conversationId, ChatRole role, string content, MessageGenerationMetrics? metrics = null, string? toolName = null, string? toolArguments = null, CancellationToken ct = default)
+    public async Task<ChatMessage> AddMessageAsync(int conversationId, ChatRole role, string content, MessageGenerationMetrics? metrics = null, string? toolName = null, string? toolArguments = null, string? toolCallsJson = null, CancellationToken ct = default)
     {
         await using var db = await factory.CreateDbContextAsync(ct);
         var message = new ChatMessage
@@ -62,6 +69,7 @@ public sealed class ConversationService(IDbContextFactory<SentinelDbContext> fac
             EvalDurationNanoseconds = metrics?.EvalDurationNanoseconds,
             ToolName = toolName,
             ToolArguments = toolArguments,
+            ToolCallsJson = toolCallsJson,
             CreatedAt = DateTime.UtcNow
         };
         db.ChatMessages.Add(message);

@@ -16,6 +16,9 @@ public class ChatMessage
     /// <summary>JSON-serialized arguments the model called <see cref="ToolName"/> with.</summary>
     public string? ToolArguments { get; set; }
 
+    /// <summary>JSON-serialized assistant tool calls, retained for Ollama multi-turn continuity.</summary>
+    public string? ToolCallsJson { get; set; }
+
     /// <summary>Output token count reported by Ollama (assistant messages), if known.</summary>
     public int? TokenCount { get; set; }
 

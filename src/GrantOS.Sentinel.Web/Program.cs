@@ -8,6 +8,8 @@ using GrantOS.Sentinel.Web.Endpoints;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Threading.RateLimiting;
 using AppComponent = GrantOS.Sentinel.Web.Components.App;
 
 if (args is ["--install-playwright-browsers"])
@@ -24,6 +26,14 @@ builder.Services.AddRazorComponents()
 
 // Everything data/Ollama related lives behind this single call.
 builder.Services.AddSentinelInfrastructure(builder.Configuration);
+builder.Services.AddSingleton<LocalApiAccessToken>();
+builder.Services.AddRateLimiter(options => options.AddFixedWindowLimiter("sentinel-api", limiter =>
+{
+    limiter.PermitLimit = 120;
+    limiter.Window = TimeSpan.FromMinutes(1);
+    limiter.QueueLimit = 0;
+    limiter.AutoReplenishment = true;
+}));
 var electronWindow = new ElectronWindowController();
 builder.Services.AddSingleton(electronWindow);
 
@@ -49,7 +59,7 @@ await using (var scope = app.Services.CreateAsyncScope())
 {
     var factory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<SentinelDbContext>>();
     await using var db = await factory.CreateDbContextAsync();
-    await db.Database.MigrateAsync();
+    await LocalDatabaseStartup.PrepareAndMigrateAsync(db);
 }
 
 if (!app.Environment.IsDevelopment())
@@ -62,6 +72,7 @@ if (!app.Environment.IsDevelopment())
 // HTTPS binding to redirect to.
 app.UseStaticFiles();
 app.UseAntiforgery();
+app.UseRateLimiter();
 
 // Localhost-only HTTP surface the future VS Code extension will call.
 app.MapSentinelApi();
@@ -79,7 +90,8 @@ var address = server.Features.Get<IServerAddressesFeature>()?.Addresses.FirstOrD
 if (address is not null)
 {
     electronWindow.SetBaseAddress(address);
-    await RuntimeStateFile.WriteAsync(address);
+    var accessToken = app.Services.GetRequiredService<LocalApiAccessToken>();
+    await RuntimeStateFile.WriteAsync(address, accessToken.Value);
 }
 
 try

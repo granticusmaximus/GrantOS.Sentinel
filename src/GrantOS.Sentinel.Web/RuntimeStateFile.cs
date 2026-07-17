@@ -8,11 +8,15 @@ public static class RuntimeStateFile
         "GrantOS.Sentinel",
         "runtime-url");
 
-    public static async Task WriteAsync(string address)
+    public static async Task WriteAsync(string address, string accessToken)
     {
         var directory = Path.GetDirectoryName(PathName)!;
         Directory.CreateDirectory(directory);
-        await File.WriteAllTextAsync(PathName, address.TrimEnd('/'));
+        var temporaryPath = $"{PathName}.{Environment.ProcessId}.tmp";
+        await File.WriteAllTextAsync(temporaryPath, $"{address.TrimEnd('/')}\n{accessToken}\n");
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(temporaryPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        File.Move(temporaryPath, PathName, overwrite: true);
     }
 
     public static void Delete()

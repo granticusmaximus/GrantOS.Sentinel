@@ -33,6 +33,7 @@ public sealed class ConversationServiceTests
         Assert.Equal(3_000_000_000, message.EvalDurationNanoseconds);
 
         var summary = Assert.Single(await service.ListAsync());
-        Assert.Single(summary.Messages);
+        Assert.Equal(1, summary.MessageCount);
+        Assert.Equal(30, summary.GeneratedTokenCount);
     }
 }

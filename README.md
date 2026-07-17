@@ -146,8 +146,8 @@ dashboard/status reflect it rather than throwing.
 
 ## The localhost API
 
-A small JSON API lives under `/api/sentinel` for the future VS Code extension. It is
-**localhost-only and unauthenticated** in Phase 1, so don't expose it beyond loopback.
+A small JSON API lives under `/api/sentinel` for the future VS Code extension. It accepts
+loopback traffic only and requires the per-process token stored in the owner-only runtime file.
 
 | Method | Route                     | Purpose                              |
 |--------|---------------------------|--------------------------------------|
@@ -161,7 +161,9 @@ A small JSON API lives under `/api/sentinel` for the future VS Code extension. I
 Quick check once the app is running:
 
 ```bash
-curl http://localhost:5217/api/sentinel/health
+base_url="$(sed -n '1p' "$HOME/Library/Application Support/GrantOS.Sentinel/runtime-url")"
+token="$(sed -n '2p' "$HOME/Library/Application Support/GrantOS.Sentinel/runtime-url")"
+curl -H "X-Sentinel-Token: $token" "$base_url/api/sentinel/health"
 ```
 
 Note `/chat` here is a thin, non-streaming proxy and does **not** save history — the Blazor

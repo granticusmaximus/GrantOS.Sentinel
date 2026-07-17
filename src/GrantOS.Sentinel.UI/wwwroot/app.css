@@ -261,6 +261,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .chat-input .btn-primary svg { transform: translateX(-1px); }
 .chat-input .btn-primary:hover:not(:disabled) { background: radial-gradient(circle at 35% 30%, #2a4fc0, #0d2670); border-color: #0d2670; color: #fff; }
 .chat-input .btn-primary:disabled { background: var(--bg-elev-2); border-color: var(--border); }
+.chat-input .btn-stop { flex-shrink: 0; height: 40px; border-radius: 20px; }
 .cursor::after { content: "▍"; color: var(--accent); animation: blink 1s steps(1) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
 

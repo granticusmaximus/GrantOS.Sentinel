@@ -2,6 +2,7 @@
 @inject IKnowledgeService KnowledgeService
 @inject NavigationManager Nav
 @inject Microsoft.Extensions.Options.IOptions<SentinelOptions> SentinelOptions
+@implements IDisposable
 
 <h1>Knowledge</h1>
 <p class="page-sub">Search durable Memory notes and indexed Project files from one scope-safe catalog.</p>
@@ -77,6 +78,12 @@ else
                 </article>
             }
         </div>
+        @if (_result.Items.Count < _result.TotalMatches)
+        {
+            <div class="btn-row" style="justify-content:center; margin-top:1rem">
+                <button class="btn" @onclick="LoadMore">Load more</button>
+            </div>
+        }
     }
 }
 
@@ -85,6 +92,9 @@ else
     private ProjectScope _scope;
     private KnowledgeSourceKind _source = KnowledgeSourceKind.All;
     private KnowledgeSearchResult? _result;
+    private CancellationTokenSource? _searchCts;
+    private int _searchVersion;
+    private int _maxResults = 50;
 
     protected override async Task OnInitializedAsync()
     {
@@ -92,8 +102,42 @@ else
         await Search();
     }
 
-    private async Task Search() =>
-        _result = await KnowledgeService.SearchAsync(new KnowledgeSearchRequest(_query, _scope, _source));
+    private async Task Search()
+    {
+        _maxResults = 50;
+        await SearchCore();
+    }
+
+    private async Task LoadMore()
+    {
+        _maxResults = Math.Min(200, _maxResults + 50);
+        await SearchCore();
+    }
+
+    private async Task SearchCore()
+    {
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _searchCts = new CancellationTokenSource();
+        var version = ++_searchVersion;
+        try
+        {
+            await Task.Delay(200, _searchCts.Token);
+            var result = await KnowledgeService.SearchAsync(
+                new KnowledgeSearchRequest(_query, _scope, _source, _maxResults), _searchCts.Token);
+            if (version == _searchVersion)
+                _result = result;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    public void Dispose()
+    {
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+    }
 
     private void AskChat(KnowledgeItem item)
     {

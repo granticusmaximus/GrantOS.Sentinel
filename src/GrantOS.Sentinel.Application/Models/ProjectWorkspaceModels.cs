@@ -2,6 +2,8 @@ namespace GrantOS.Sentinel.Application.Models;
 
 public sealed record WorkspaceIndexResult(int IndexedFiles, int AddedFiles, int UpdatedFiles, int RemovedFiles, long IndexedBytes);
 
+public sealed record WorkspaceIndexProgress(int ScannedFiles, int IndexedFiles, string CurrentPath);
+
 public sealed record RetrievedProjectDocument(
     int WorkspaceId,
     string WorkspaceName,

@@ -7,6 +7,7 @@
 @inject IMemoryRetrievalService MemoryRetrieval
 @inject IProjectWorkspaceService ProjectWorkspaces
 @inject IProjectStandardService ProjectStandards
+@inject ChatRequestComposer RequestComposer
 @inject ISystemPromptService SystemPrompts
 @inject IModelProfileService ModelProfiles
 @inject IToolAuditService Audit
@@ -114,7 +115,7 @@
         {
             <div class="empty">Send a message to start. This thread is saved locally as soon as you do.</div>
         }
-        @foreach (var msg in _messages)
+        @foreach (var msg in _messages.Where(message => message.Role != ChatRole.Assistant || !string.IsNullOrEmpty(message.Content)))
         {
             <div class="msg @(msg.Role == ChatRole.User ? "user" : msg.Role == ChatRole.Tool ? "tool" : "assistant")">
                 <div class="who">@(msg.Role == ChatRole.User ? "you" : msg.Role == ChatRole.Tool ? $"🔧 {msg.ToolName}" : _selectedModel)</div>
@@ -139,6 +140,10 @@
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" /></svg>
             }
         </button>
+        @if (_sending)
+        {
+            <button class="btn btn-danger btn-stop" title="Stop generation" @onclick="StopSending">Stop</button>
+        }
     </div>
 </div>
 
@@ -173,6 +178,8 @@
     private ElementReference _inputRef;
     private IJSObjectReference? _interopModule;
     private DotNetObjectReference<Chat>? _dotNetRef;
+    private CancellationTokenSource? _sendCts;
+    private ChatRequestComposition? _lastComposition;
 
     private sealed class PendingToolApproval
     {
@@ -229,6 +236,8 @@
 
     public async ValueTask DisposeAsync()
     {
+        _sendCts?.Cancel();
+        _pendingApproval?.Decision.TrySetCanceled();
         if (_interopModule is not null)
         {
             try
@@ -240,6 +249,13 @@
             catch (JSDisconnectedException) { /* circuit already gone - nothing to clean up */ }
         }
         _dotNetRef?.Dispose();
+        _sendCts?.Dispose();
+    }
+
+    private void StopSending()
+    {
+        _sendCts?.Cancel();
+        _pendingApproval?.Decision.TrySetCanceled();
     }
 
     private async Task LoadConversationAsync(int id)
@@ -271,127 +287,170 @@
         if (_sending || string.IsNullOrWhiteSpace(_input)) return;
         _error = null;
         _sending = true;
-
-        var userText = _input.Trim();
-        _input = "";
-        var scope = _scope;
-
-        // Persist the conversation on first message.
-        if (_conversationId is null)
-        {
-            var title = userText.Length > 60 ? userText[..60] + "…" : userText;
-            var convo = await Conversations.CreateAsync(title, _selectedModel, _selectedPromptId, scope);
-            _conversationId = convo.Id;
-        }
-
-        var userMessage = new ChatMessage { Role = ChatRole.User, Content = userText };
-        _messages.Add(userMessage);
-        await Conversations.AddMessageAsync(_conversationId!.Value, ChatRole.User, userText, null);
+        _sendCts?.Dispose();
+        _sendCts = new CancellationTokenSource();
+        var ct = _sendCts.Token;
 
         try
         {
-            _retrievedMemory = _useMemory
-                ? await MemoryRetrieval.RetrieveAsync(userText, scope)
-                : MemoryRetrievalResult.Empty;
-        }
-        catch (Exception ex)
-        {
-            _retrievedMemory = MemoryRetrievalResult.Empty;
-            _error = $"Memory retrieval was skipped: {ex.Message}";
-        }
+            var userText = _input.Trim();
+            _input = "";
+            var scope = _scope;
 
-        try
-        {
-            _retrievedProjects = _useProjects
-                ? await ProjectWorkspaces.RetrieveAsync(userText, scope)
-                : ProjectRetrievalResult.Empty;
-        }
-        catch (Exception ex)
-        {
-            _retrievedProjects = ProjectRetrievalResult.Empty;
-            _error = $"Project retrieval was skipped: {ex.Message}";
-        }
+            if (_conversationId is null)
+            {
+                var title = userText.Length > 60 ? userText[..60] + "…" : userText;
+                var convo = await Conversations.CreateAsync(title, _selectedModel, _selectedPromptId, scope, ct);
+                _conversationId = convo.Id;
+            }
 
-        try
-        {
-            _standardContext = _useStandards
-                ? await ProjectStandards.GetContextAsync(scope)
-                : StandardContextResult.Empty;
-        }
-        catch (Exception ex)
-        {
-            _standardContext = StandardContextResult.Empty;
-            _error = $"Project standards were skipped: {ex.Message}";
-        }
-
-        // A user turn can take several rounds: model replies with tool_calls, we run (or
-        // decline) them, feed the result back, and let the model continue - capped so a
-        // misbehaving model can't loop forever.
-        const int maxToolRounds = 5;
-        for (var round = 0; round <= maxToolRounds; round++)
-        {
-            var assistantMessage = new ChatMessage { Role = ChatRole.Assistant, Content = "" };
-            _messages.Add(assistantMessage);
-
-            var request = await BuildRequestAsync();
-            var success = false;
-            IReadOnlyList<OllamaToolCall>? requestedToolCalls = null;
-            MessageGenerationMetrics? generationMetrics = null;
+            var userMessage = new ChatMessage { Role = ChatRole.User, Content = userText };
+            _messages.Add(userMessage);
+            await Conversations.AddMessageAsync(_conversationId!.Value, ChatRole.User, userText, ct: ct);
 
             try
             {
-                await foreach (var evt in Ollama.StreamChatAsync(request))
-                {
-                    switch (evt)
-                    {
-                        case OllamaContentDelta delta:
-                            assistantMessage.Content += delta.Text;
-                            await InvokeAsync(StateHasChanged);
-                            break;
-                        case OllamaToolCallsReady toolCalls:
-                            requestedToolCalls = toolCalls.ToolCalls;
-                            break;
-                        case OllamaGenerationCompleted completed:
-                            generationMetrics = new MessageGenerationMetrics(
-                                completed.PromptTokenCount,
-                                completed.ResponseTokenCount,
-                                completed.TotalDurationNanoseconds,
-                                completed.LoadDurationNanoseconds,
-                                completed.PromptEvalDurationNanoseconds,
-                                completed.EvalDurationNanoseconds);
-                            ApplyGenerationMetrics(assistantMessage, generationMetrics);
-                            break;
-                    }
-                }
-                success = true;
+                _retrievedMemory = _useMemory
+                    ? await MemoryRetrieval.RetrieveAsync(userText, scope, ct)
+                    : MemoryRetrievalResult.Empty;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _error = $"The model call failed: {ex.Message}";
+                _retrievedMemory = MemoryRetrievalResult.Empty;
+                _error = $"Memory retrieval was skipped: {ex.Message}";
             }
 
-            // Persist whatever text we received (even a partial reply is worth keeping).
-            if (assistantMessage.Content.Length > 0)
-                await Conversations.AddMessageAsync(_conversationId.Value, ChatRole.Assistant, assistantMessage.Content, generationMetrics);
-            else if (requestedToolCalls is null)
-                _messages.Remove(assistantMessage);
+            try
+            {
+                _retrievedProjects = _useProjects
+                    ? await ProjectWorkspaces.RetrieveAsync(userText, scope, ct)
+                    : ProjectRetrievalResult.Empty;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _retrievedProjects = ProjectRetrievalResult.Empty;
+                _error = $"Project retrieval was skipped: {ex.Message}";
+            }
 
-            await Audit.LogAsync(
-                toolName: "ollama",
-                action: "chat",
-                parameters: $"model={_selectedModel}; scope={scope}; memories={_retrievedMemory.Entries.Count}; projectDocuments={_retrievedProjects.Documents.Count}; standards={_standardContext.Standards.Count}",
-                result: success ? $"ok ({assistantMessage.Content.Length} chars)" : "failed",
-                success: success,
-                scope: scope);
+            try
+            {
+                _standardContext = _useStandards
+                    ? await ProjectStandards.GetContextAsync(scope, ct)
+                    : StandardContextResult.Empty;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _standardContext = StandardContextResult.Empty;
+                _error = $"Project standards were skipped: {ex.Message}";
+            }
 
-            if (!success || requestedToolCalls is not { Count: > 0 })
-                break; // plain text reply or a failure - either way, this turn is over
+            const int maxToolRounds = 5;
+            for (var round = 0; round <= maxToolRounds; round++)
+            {
+                ct.ThrowIfCancellationRequested();
+                var assistantMessage = new ChatMessage { Role = ChatRole.Assistant, Content = "" };
+                _messages.Add(assistantMessage);
 
-            await HandleToolCallsAsync(requestedToolCalls, scope);
-            // loop back: BuildRequestAsync will now include the tool result(s) so the model can continue
+                var request = await BuildRequestAsync(ct);
+                var success = false;
+                IReadOnlyList<OllamaToolCall>? requestedToolCalls = null;
+                MessageGenerationMetrics? generationMetrics = null;
+
+                try
+                {
+                    await foreach (var evt in Ollama.StreamChatAsync(request, ct))
+                    {
+                        switch (evt)
+                        {
+                            case OllamaContentDelta delta:
+                                assistantMessage.Content += delta.Text;
+                                await InvokeAsync(StateHasChanged);
+                                break;
+                            case OllamaToolCallsReady toolCalls:
+                                requestedToolCalls = toolCalls.ToolCalls;
+                                break;
+                            case OllamaGenerationCompleted completed:
+                                generationMetrics = new MessageGenerationMetrics(
+                                    completed.PromptTokenCount,
+                                    completed.ResponseTokenCount,
+                                    completed.TotalDurationNanoseconds,
+                                    completed.LoadDurationNanoseconds,
+                                    completed.PromptEvalDurationNanoseconds,
+                                    completed.EvalDurationNanoseconds);
+                                ApplyGenerationMetrics(assistantMessage, generationMetrics);
+                                break;
+                        }
+                    }
+                    success = true;
+                }
+                catch (OperationCanceledException)
+                {
+                    if (assistantMessage.Content.Length > 0)
+                    {
+                        await Conversations.AddMessageAsync(
+                            _conversationId.Value,
+                            ChatRole.Assistant,
+                            assistantMessage.Content,
+                            generationMetrics,
+                            ct: CancellationToken.None);
+                    }
+                    throw;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _error = $"The model call failed: {ex.Message}";
+                }
+
+                if (requestedToolCalls is { Count: > 0 })
+                    assistantMessage.ToolCallsJson = JsonSerializer.Serialize(requestedToolCalls);
+
+                if (assistantMessage.Content.Length > 0 || assistantMessage.ToolCallsJson is not null)
+                {
+                    await Conversations.AddMessageAsync(
+                        _conversationId.Value,
+                        ChatRole.Assistant,
+                        assistantMessage.Content,
+                        generationMetrics,
+                        toolCallsJson: assistantMessage.ToolCallsJson,
+                        ct: ct);
+                }
+                else
+                {
+                    _messages.Remove(assistantMessage);
+                }
+
+                await Audit.LogAsync(
+                    toolName: "ollama",
+                    action: "chat",
+                    parameters: $"model={_selectedModel}; scope={scope}; memories={_retrievedMemory.Entries.Count}; projectDocuments={_retrievedProjects.Documents.Count}; standards={_standardContext.Standards.Count}; omittedMessages={_lastComposition?.OmittedHistoryMessages ?? 0}",
+                    result: success ? $"ok ({assistantMessage.Content.Length} chars)" : "failed",
+                    success: success,
+                    scope: scope,
+                    ct: ct);
+
+                if (!success || requestedToolCalls is not { Count: > 0 })
+                    break;
+
+                await HandleToolCallsAsync(requestedToolCalls, scope, ct);
+            }
         }
-
-        _sending = false;
+        catch (OperationCanceledException)
+        {
+            _error = "Generation stopped.";
+        }
+        catch (Exception ex)
+        {
+            _error = $"The chat workflow failed: {ex.Message}";
+        }
+        finally
+        {
+            _pendingApproval?.Decision.TrySetCanceled();
+            _pendingApproval = null;
+            _sending = false;
+            _sendCts?.Dispose();
+            _sendCts = null;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private static void ApplyGenerationMetrics(ChatMessage message, MessageGenerationMetrics metrics)
@@ -434,7 +493,7 @@
                 : $"{duration.TotalMilliseconds:F0}ms";
     }
 
-    private async Task HandleToolCallsAsync(IReadOnlyList<OllamaToolCall> requestedToolCalls, ProjectScope scope)
+    private async Task HandleToolCallsAsync(IReadOnlyList<OllamaToolCall> requestedToolCalls, ProjectScope scope, CancellationToken ct)
     {
         foreach (var call in requestedToolCalls)
         {
@@ -444,7 +503,7 @@
             if (tool is null)
             {
                 resultText = $"Unknown tool '{call.Function.Name}'.";
-                await Audit.LogAsync(call.Function.Name, "unknown-tool", null, resultText, false, scope);
+                await Audit.LogAsync(call.Function.Name, "unknown-tool", null, resultText, false, scope, ct);
             }
             else
             {
@@ -452,7 +511,7 @@
                 if (!validation.IsValid)
                 {
                     resultText = $"Action rejected by Sentinel's safety policy: {validation.Error}";
-                    await Audit.LogAsync(tool.Name, "rejected", tool.DescribeInvocation(call.Function.Arguments), resultText, false, scope);
+                    await Audit.LogAsync(tool.Name, "rejected", tool.DescribeInvocation(call.Function.Arguments), resultText, false, scope, ct);
                 }
                 else
                 {
@@ -466,19 +525,19 @@
                     _pendingApproval = approval;
                     await InvokeAsync(StateHasChanged);
 
-                    var approved = await approval.Decision.Task;
+                    var approved = await approval.Decision.Task.WaitAsync(ct);
                     _pendingApproval = null;
 
                     if (!approved)
                     {
                         resultText = "The user denied this action.";
-                        await Audit.LogAsync(tool.Name, "denied", description, null, false, scope);
+                        await Audit.LogAsync(tool.Name, "denied", description, null, false, scope, ct);
                     }
                     else
                     {
-                        var result = await tool.ExecuteAsync(call.Function.Arguments);
+                        var result = await tool.ExecuteAsync(call.Function.Arguments, ct);
                         resultText = result.Output;
-                        await Audit.LogAsync(tool.Name, "execute", description, result.Output, result.Success, scope);
+                        await Audit.LogAsync(tool.Name, "execute", description, result.Output, result.Success, scope, ct);
                     }
                 }
             }
@@ -492,46 +551,32 @@
                 ToolArguments = toolArgsJson
             };
             _messages.Add(toolMessage);
-            await Conversations.AddMessageAsync(_conversationId!.Value, ChatRole.Tool, resultText, null, call.Function.Name, toolArgsJson);
+            await Conversations.AddMessageAsync(_conversationId!.Value, ChatRole.Tool, resultText, null, call.Function.Name, toolArgsJson, ct: ct);
             await InvokeAsync(StateHasChanged);
         }
     }
 
-    private async Task<OllamaChatRequest> BuildRequestAsync()
+    private async Task<OllamaChatRequest> BuildRequestAsync(CancellationToken ct)
     {
-        var wire = new List<OllamaMessage>();
+        var systemMessages = new List<OllamaMessage>();
 
         if (_selectedPromptId is int promptId)
         {
-            var prompt = await SystemPrompts.GetAsync(promptId);
+            var prompt = await SystemPrompts.GetAsync(promptId, ct);
             if (prompt is not null)
-                wire.Add(new OllamaMessage("system", prompt.Content));
+                systemMessages.Add(new OllamaMessage("system", prompt.Content));
         }
 
         if (!string.IsNullOrWhiteSpace(_standardContext.PromptText))
-            wire.Add(new OllamaMessage("system", _standardContext.PromptText));
+            systemMessages.Add(new OllamaMessage("system", _standardContext.PromptText));
 
         if (!string.IsNullOrWhiteSpace(_retrievedMemory.PromptText))
-            wire.Add(new OllamaMessage("system", _retrievedMemory.PromptText));
+            systemMessages.Add(new OllamaMessage("system", _retrievedMemory.PromptText));
 
         if (!string.IsNullOrWhiteSpace(_retrievedProjects.PromptText))
-            wire.Add(new OllamaMessage("system", _retrievedProjects.PromptText));
+            systemMessages.Add(new OllamaMessage("system", _retrievedProjects.PromptText));
 
-        foreach (var m in _messages.Where(m => m.Role != ChatRole.System))
-        {
-            if (m.Role == ChatRole.Assistant && string.IsNullOrEmpty(m.Content)) continue; // skip the pending placeholder
-            var role = m.Role switch
-            {
-                ChatRole.User => "user",
-                ChatRole.Tool => "tool",
-                _ => "assistant"
-            };
-            wire.Add(m.Role == ChatRole.Tool
-                ? new OllamaMessage(role, m.Content) { ToolName = m.ToolName }
-                : new OllamaMessage(role, m.Content));
-        }
-
-        var profile = (await ModelProfiles.ListAsync()).FirstOrDefault(p => p.Name == _selectedModel);
+        var profile = (await ModelProfiles.ListAsync(ct)).FirstOrDefault(p => p.Name == _selectedModel);
         var options = profile is null
             ? null
             : new OllamaOptions { NumCtx = profile.ContextLength, Temperature = profile.Temperature };
@@ -539,7 +584,7 @@
         // Ollama returns a 400 for the *whole* request if "tools" is sent to a model that
         // doesn't declare tool-calling support (confirmed live: gemma3 rejects it outright),
         // so this has to be checked per model before attaching anything.
-        var modelSupportsTools = await SupportsToolsAsync(_selectedModel);
+        var modelSupportsTools = await SupportsToolsAsync(_selectedModel, ct);
         var toolDefs = modelSupportsTools
             ? Tools
                 .Select(t => new OllamaToolDefinition
@@ -554,22 +599,22 @@
                 .ToList()
             : [];
 
-        return new OllamaChatRequest
-        {
-            Model = _selectedModel,
-            Messages = wire,
-            Stream = true,
-            Options = options,
-            Tools = toolDefs.Count > 0 ? toolDefs : null
-        };
+        _lastComposition = RequestComposer.Compose(
+            _selectedModel,
+            profile?.ContextLength ?? 8_192,
+            systemMessages,
+            _messages,
+            options,
+            toolDefs);
+        return _lastComposition.Request;
     }
 
-    private async Task<bool> SupportsToolsAsync(string model)
+    private async Task<bool> SupportsToolsAsync(string model, CancellationToken ct)
     {
         if (_toolSupportByModel.TryGetValue(model, out var cached))
             return cached;
 
-        var supported = await Ollama.SupportsToolCallingAsync(model);
+        var supported = await Ollama.SupportsToolCallingAsync(model, ct);
         _toolSupportByModel[model] = supported;
         return supported;
     }

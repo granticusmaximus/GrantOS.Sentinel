@@ -1,4 +1,5 @@
 using GrantOS.Sentinel.Application.Options;
+using GrantOS.Sentinel.Application.Models;
 using GrantOS.Sentinel.Domain.Enums;
 using GrantOS.Sentinel.Infrastructure.Services;
 using Microsoft.Extensions.Options;
@@ -100,10 +101,32 @@ public sealed class ProjectWorkspaceServiceTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task Index_excludes_sensitive_files_and_reports_progress()
+    {
+        var source = Path.Combine(_root, "sensitive");
+        Directory.CreateDirectory(source);
+        await File.WriteAllTextAsync(Path.Combine(source, ".env.local"), "API_KEY=secret");
+        await File.WriteAllTextAsync(Path.Combine(source, "safe.cs"), "class Safe { }");
+        var workspace = await _service.CreateAsync("Safe", source, ProjectScope.Work);
+        var reports = new List<WorkspaceIndexProgress>();
+
+        var result = await _service.IndexAsync(workspace.Id, new InlineProgress<WorkspaceIndexProgress>(reports.Add));
+
+        Assert.Equal(1, result.IndexedFiles);
+        Assert.Single(reports);
+        Assert.Equal("safe.cs", reports[0].CurrentPath);
+    }
+
     public void Dispose()
     {
         _factory.Dispose();
         if (Directory.Exists(_root))
             Directory.Delete(_root, recursive: true);
+    }
+
+    private sealed class InlineProgress<T>(Action<T> report) : IProgress<T>
+    {
+        public void Report(T value) => report(value);
     }
 }

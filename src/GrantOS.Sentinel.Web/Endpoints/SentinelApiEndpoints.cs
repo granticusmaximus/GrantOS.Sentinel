@@ -9,8 +9,7 @@ namespace GrantOS.Sentinel.Web.Endpoints;
 /// A small HTTP surface the future VS Code extension (and scripts) can call.
 ///
 /// Phase 1 scope and caveats:
-///  - Localhost-only. There is no authentication yet, so this must never be
-///    exposed beyond the loopback interface. Kestrel binds to localhost by default.
+///  - Loopback-only and protected by a per-process token written to the private runtime file.
 ///  - Antiforgery is disabled on this group because these are machine-to-machine
 ///    JSON calls, not browser form posts.
 ///  - /chat is a thin, non-streaming proxy to Ollama and does not persist history.
@@ -21,7 +20,19 @@ public static class SentinelApiEndpoints
 {
     public static IEndpointRouteBuilder MapSentinelApi(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/sentinel").DisableAntiforgery();
+        var group = app.MapGroup("/api/sentinel")
+            .DisableAntiforgery()
+            .RequireRateLimiting("sentinel-api")
+            .AddEndpointFilter(async (context, next) =>
+            {
+                var http = context.HttpContext;
+                var token = http.RequestServices.GetRequiredService<LocalApiAccessToken>();
+                if (!LocalApiRequestGuard.IsAuthorized(http, token.Value))
+                    return Results.Unauthorized();
+                if (http.Request.ContentLength > LocalApiRequestGuard.MaximumRequestBytes)
+                    return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+                return await next(context);
+            });
 
         group.MapGet("/health", async (IOllamaChatService ollama, CancellationToken ct) =>
         {
@@ -45,6 +56,12 @@ public static class SentinelApiEndpoints
         {
             if (string.IsNullOrWhiteSpace(req.Model) || string.IsNullOrWhiteSpace(req.Message))
                 return Results.BadRequest(new { error = "Both 'model' and 'message' are required." });
+            if (req.Model.Length > 200 || req.Message.Length > 100_000 || req.SystemPrompt?.Length > 100_000)
+                return Results.BadRequest(new { error = "The request exceeds the supported text length." });
+            if (req.NumCtx is < 256 or > 131_072)
+                return Results.BadRequest(new { error = "'numCtx' must be between 256 and 131072." });
+            if (req.Temperature is < 0 or > 2)
+                return Results.BadRequest(new { error = "'temperature' must be between 0 and 2." });
 
             var messages = new List<OllamaMessage>();
             if (!string.IsNullOrWhiteSpace(req.SystemPrompt))
@@ -99,6 +116,8 @@ public static class SentinelApiEndpoints
         {
             if (string.IsNullOrWhiteSpace(req.Title))
                 return Results.BadRequest(new { error = "'title' is required." });
+            if (req.Title.Length > 200 || req.Content?.Length > 500_000 || req.Category?.Length > 100 || req.Tags?.Length > 500)
+                return Results.BadRequest(new { error = "One or more fields exceed their supported length." });
 
             var entry = new MemoryEntry
             {

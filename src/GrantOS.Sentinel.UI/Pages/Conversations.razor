@@ -21,7 +21,7 @@ else
             <div class="list-item">
                 <div>
                     <h3>@c.Title</h3>
-                    <span class="meta">@c.ModelName · @c.Scope · @c.Messages.Count messages · @c.Messages.Sum(m => m.TokenCount ?? 0).ToString("N0") generated tokens · updated @c.UpdatedAt.ToLocalTime().ToString("g")</span>
+                    <span class="meta">@c.ModelName · @c.Scope · @c.MessageCount messages · @c.GeneratedTokenCount.ToString("N0") generated tokens · updated @c.UpdatedAt.ToLocalTime().ToString("g")</span>
                 </div>
                 <div class="btn-row">
                     <button class="btn btn-sm" @onclick="() => Open(c.Id)">Open</button>
@@ -33,7 +33,7 @@ else
 }
 
 @code {
-    private List<Conversation>? _items;
+    private List<ConversationSummary>? _items;
 
     protected override async Task OnInitializedAsync() => await Reload();
 

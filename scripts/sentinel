@@ -8,9 +8,11 @@ log_file="/tmp/grantos-sentinel-launcher.log"
 
 is_running() {
     [[ -f "${runtime_file}" ]] || return 1
-    local base_url
-    base_url="$(<"${runtime_file}")"
-    curl -fsS --max-time 2 "${base_url}/api/sentinel/health" >/dev/null 2>&1
+    local base_url api_token
+    base_url="$(sed -n '1p' "${runtime_file}")"
+    api_token="$(sed -n '2p' "${runtime_file}")"
+    [[ -n "${base_url}" && -n "${api_token}" ]] || return 1
+    curl -fsS --max-time 2 -H "X-Sentinel-Token: ${api_token}" "${base_url}/api/sentinel/health" >/dev/null 2>&1
 }
 
 if ! is_running; then
@@ -29,12 +31,13 @@ if ! is_running; then
     exit 1
 fi
 
-base_url="$(<"${runtime_file}")"
+base_url="$(sed -n '1p' "${runtime_file}")"
+api_token="$(sed -n '2p' "${runtime_file}")"
 for _ in {1..60}; do
     if (( $# > 0 )); then
-        curl -fsS --max-time 2 -X POST -G --data-urlencode "prompt=$*" "${base_url}/api/sentinel/focus" >/dev/null 2>&1 && exit 0
+        curl -fsS --max-time 2 -H "X-Sentinel-Token: ${api_token}" -X POST -G --data-urlencode "prompt=$*" "${base_url}/api/sentinel/focus" >/dev/null 2>&1 && exit 0
     else
-        curl -fsS --max-time 2 -X POST "${base_url}/api/sentinel/focus" >/dev/null 2>&1 && exit 0
+        curl -fsS --max-time 2 -H "X-Sentinel-Token: ${api_token}" -X POST "${base_url}/api/sentinel/focus" >/dev/null 2>&1 && exit 0
     fi
     sleep 0.5
 done
