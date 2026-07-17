@@ -13,6 +13,7 @@ public class SentinelDbContext(DbContextOptions<SentinelDbContext> options) : Db
     public DbSet<ToolAuditLog> ToolAuditLogs => Set<ToolAuditLog>();
     public DbSet<ProjectWorkspace> ProjectWorkspaces => Set<ProjectWorkspace>();
     public DbSet<ProjectDocument> ProjectDocuments => Set<ProjectDocument>();
+    public DbSet<ProjectStandard> ProjectStandards => Set<ProjectStandard>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -88,6 +89,16 @@ public class SentinelDbContext(DbContextOptions<SentinelDbContext> options) : Db
             e.Property(x => x.Content).IsRequired();
             e.Property(x => x.ContentHash).HasMaxLength(64).IsRequired();
             e.HasIndex(x => new { x.ProjectWorkspaceId, x.RelativePath }).IsUnique();
+        });
+
+        b.Entity<ProjectStandard>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            e.Property(x => x.Category).HasMaxLength(100);
+            e.Property(x => x.AppliesTo).HasMaxLength(500);
+            e.Property(x => x.Content).IsRequired();
+            e.Property(x => x.Scope).HasConversion<string>().HasMaxLength(20);
+            e.HasIndex(x => new { x.Scope, x.Enabled, x.Priority });
         });
 
         SeedData(b);

@@ -19,6 +19,7 @@ public static class DependencyInjection
         services.Configure<AgentOptions>(configuration.GetSection(AgentOptions.SectionName));
         services.Configure<MemoryRetrievalOptions>(configuration.GetSection(MemoryRetrievalOptions.SectionName));
         services.Configure<WorkspaceIndexOptions>(configuration.GetSection(WorkspaceIndexOptions.SectionName));
+        services.Configure<StandardsOptions>(configuration.GetSection(StandardsOptions.SectionName));
 
         // SQLite via a context factory (short-lived contexts, safe for Blazor Server circuits).
         var connectionString = configuration.GetConnectionString("Sentinel")
@@ -42,6 +43,7 @@ public static class DependencyInjection
         services.AddScoped<IToolAuditService, ToolAuditService>();
         services.AddScoped<IProjectWorkspaceService, ProjectWorkspaceService>();
         services.AddScoped<IKnowledgeService, KnowledgeService>();
+        services.AddScoped<IProjectStandardService, ProjectStandardService>();
 
         // Agentic tools the model can request (each gated by user approval in the UI).
         services.AddSingleton<FileSystemPathPolicy>();
