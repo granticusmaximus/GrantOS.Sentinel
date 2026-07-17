@@ -78,9 +78,16 @@
     </div>
 
     <div class="chat-input">
-        <textarea @bind="_input" @bind:event="oninput" placeholder="Ask Sentinel…" disabled="@_sending"></textarea>
+        <textarea @ref="_inputRef" @bind="_input" @bind:event="oninput" placeholder="Ask Sentinel… (Enter to send, Shift+Enter for a new line)" disabled="@_sending"></textarea>
         <button class="btn btn-primary" title="Send" @onclick="SendAsync" disabled="@(_sending || string.IsNullOrWhiteSpace(_input) || !_online)">
-            @(_sending ? "…" : "↑")
+            @if (_sending)
+            {
+                <span>…</span>
+            }
+            else
+            {
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" /></svg>
+            }
         </button>
     </div>
 </div>
@@ -102,7 +109,9 @@
     private PendingToolApproval? _pendingApproval;
     private readonly Dictionary<string, bool> _toolSupportByModel = [];
     private ElementReference _streamRef;
-    private IJSObjectReference? _scrollModule;
+    private ElementReference _inputRef;
+    private IJSObjectReference? _interopModule;
+    private DotNetObjectReference<Chat>? _dotNetRef;
 
     private sealed class PendingToolApproval
     {
@@ -132,24 +141,39 @@
     {
         if (!firstRender) return;
 
+        _interopModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/GrantOS.Sentinel.UI/chatInterop.js");
+
         // A MutationObserver reacts directly to DOM changes (including streamed token text
         // updates) instead of a per-render interop call, which can miss updates or lag behind
         // when Blazor coalesces several rapid StateHasChanged calls into one render.
-        _scrollModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/GrantOS.Sentinel.UI/chatScroll.js");
-        await _scrollModule.InvokeVoidAsync("observeAndScroll", _streamRef);
+        await _interopModule.InvokeVoidAsync("observeAndScroll", _streamRef);
+
+        // Enter sends, Shift+Enter inserts a newline - needs a native listener since preventing
+        // the newline only for a bare Enter can't be expressed as a static Blazor attribute.
+        _dotNetRef = DotNetObjectReference.Create(this);
+        await _interopModule.InvokeVoidAsync("bindEnterToSend", _inputRef, _dotNetRef);
+    }
+
+    [JSInvokable]
+    public async Task OnEnterPressed()
+    {
+        if (!_sending && !string.IsNullOrWhiteSpace(_input) && _online)
+            await SendAsync();
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (_scrollModule is not null)
+        if (_interopModule is not null)
         {
             try
             {
-                await _scrollModule.InvokeVoidAsync("unobserve", _streamRef);
-                await _scrollModule.DisposeAsync();
+                await _interopModule.InvokeVoidAsync("unobserve", _streamRef);
+                await _interopModule.InvokeVoidAsync("unbindEnterToSend", _inputRef);
+                await _interopModule.DisposeAsync();
             }
             catch (JSDisconnectedException) { /* circuit already gone - nothing to clean up */ }
         }
+        _dotNetRef?.Dispose();
     }
 
     private async Task LoadConversationAsync(int id)
