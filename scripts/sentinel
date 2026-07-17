@@ -1,0 +1,43 @@
+#!/bin/zsh
+set -u
+
+runtime_file="${HOME}/Library/Application Support/GrantOS.Sentinel/runtime-url"
+script_path="${0:A}"
+repo_root="${script_path:h:h}"
+log_file="/tmp/grantos-sentinel-launcher.log"
+
+is_running() {
+    [[ -f "${runtime_file}" ]] || return 1
+    local base_url
+    base_url="$(<"${runtime_file}")"
+    curl -fsS --max-time 2 "${base_url}/api/sentinel/health" >/dev/null 2>&1
+}
+
+if ! is_running; then
+    nohup dotnet run --project "${repo_root}/src/GrantOS.Sentinel.Web" >"${log_file}" 2>&1 &
+
+    for _ in {1..60}; do
+        if is_running; then
+            break
+        fi
+        sleep 0.5
+    done
+fi
+
+if ! is_running; then
+    print -u2 "Sentinel did not become ready. See ${log_file}"
+    exit 1
+fi
+
+base_url="$(<"${runtime_file}")"
+for _ in {1..60}; do
+    if (( $# > 0 )); then
+        curl -fsS --max-time 2 -X POST -G --data-urlencode "prompt=$*" "${base_url}/api/sentinel/focus" >/dev/null 2>&1 && exit 0
+    else
+        curl -fsS --max-time 2 -X POST "${base_url}/api/sentinel/focus" >/dev/null 2>&1 && exit 0
+    fi
+    sleep 0.5
+done
+
+print -u2 "Sentinel started, but its Electron window did not become ready. See ${log_file}"
+exit 1

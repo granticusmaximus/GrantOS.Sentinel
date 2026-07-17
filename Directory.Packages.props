@@ -7,6 +7,8 @@
     <!-- EF Core (ships in lockstep with the .NET major version) -->
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.0" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.0" />
+    <!-- Explicit security pin over EF Core's older transitive SQLite native bundle. -->
+    <PackageVersion Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" />
     <!-- Razor Class Library shared by the Web and Maui hosts -->
     <PackageVersion Include="Microsoft.AspNetCore.Components.Web" Version="10.0.0" />
     <!-- Mac Catalyst native shell (GrantOS.Sentinel.Maui) -->

@@ -95,6 +95,20 @@ The command opens the Electron window directly; it does not open a separate brow
 A SQLite file named `grantos-sentinel.db` appears in the Web project's working directory
 on first run.
 
+### Terminal launcher
+
+The repository includes an executable launcher that starts Sentinel when needed, focuses an
+existing Electron window, and optionally prefills Chat:
+
+```bash
+./scripts/sentinel
+./scripts/sentinel "Summarize the files in this project"
+```
+
+To use `sentinel` from any directory, symlink this file into a directory already on your
+`PATH` (for example `~/.local/bin`). The launcher stores no prompt history; it discovers the
+dynamic localhost address through a runtime file under Application Support.
+
 ## Test
 
 ```bash
@@ -134,6 +148,7 @@ A small JSON API lives under `/api/sentinel` for the future VS Code extension. I
 | POST   | `/api/sentinel/chat`      | non-streaming reply (thin proxy)     |
 | GET    | `/api/sentinel/memory`    | list/search memory entries           |
 | POST   | `/api/sentinel/memory`    | create a memory entry                |
+| POST   | `/api/sentinel/focus`     | focus Electron and optionally prefill Chat |
 
 Quick check once the app is running:
 
@@ -185,8 +200,6 @@ locally; some models may support ordinary chat but not structured tool calls.
 - Split the localhost API into its own `GrantOS.Sentinel.Api` host and add auth before it
   ever leaves loopback.
 - Persist token counts and streaming metadata per message.
-- Headed browser automation with a per-action approval flow.
-- A short `sentinel` terminal launcher that focuses the Electron window.
 - Knowledge base, project standards, and workspace indexing (the "soon" nav items).
 - Retrieval over the memory vault to feed relevant notes into prompts automatically.
 

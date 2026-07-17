@@ -1,6 +1,7 @@
 using GrantOS.Sentinel.Application.Abstractions;
 using GrantOS.Sentinel.Application.Models;
 using GrantOS.Sentinel.Domain.Entities;
+using GrantOS.Sentinel.Web;
 
 namespace GrantOS.Sentinel.Web.Endpoints;
 
@@ -109,6 +110,14 @@ public static class SentinelApiEndpoints
             };
             var created = await memory.CreateAsync(entry, ct);
             return Results.Created($"/api/sentinel/memory/{created.Id}", new { created.Id });
+        });
+
+        group.MapPost("/focus", async (string? prompt, ElectronWindowController window) =>
+        {
+            var focused = await window.FocusAsync(prompt);
+            return focused
+                ? Results.Ok(new { focused = true, promptSupplied = !string.IsNullOrWhiteSpace(prompt) })
+                : Results.Problem(title: "Electron window is not ready", statusCode: 503);
         });
 
         return app;

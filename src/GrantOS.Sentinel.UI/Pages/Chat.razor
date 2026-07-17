@@ -94,6 +94,8 @@
 
 @code {
     [Parameter] public int? ConversationId { get; set; }
+    [SupplyParameterFromQuery(Name = "prompt")]
+    [Parameter] public string? Prompt { get; set; }
 
     private readonly List<ChatMessage> _messages = [];
     private List<string> _models = [];
@@ -122,6 +124,9 @@
 
     protected override async Task OnInitializedAsync()
     {
+        if (!string.IsNullOrWhiteSpace(Prompt))
+            _input = Prompt.Trim();
+
         _online = await Ollama.IsAvailableAsync();
         _prompts = [.. await SystemPrompts.ListAsync()];
         _selectedPromptId = (await SystemPrompts.GetDefaultAsync())?.Id;

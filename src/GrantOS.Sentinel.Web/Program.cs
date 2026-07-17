@@ -3,8 +3,11 @@ using ElectronNET.API.Entities;
 using GrantOS.Sentinel.Infrastructure;
 using GrantOS.Sentinel.Infrastructure.Persistence;
 using GrantOS.Sentinel.UI;
+using GrantOS.Sentinel.Web;
 using GrantOS.Sentinel.Web.Endpoints;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using AppComponent = GrantOS.Sentinel.Web.Components.App;
 
 if (args is ["--install-playwright-browsers"])
@@ -21,6 +24,8 @@ builder.Services.AddRazorComponents()
 
 // Everything data/Ollama related lives behind this single call.
 builder.Services.AddSentinelInfrastructure(builder.Configuration);
+var electronWindow = new ElectronWindowController();
+builder.Services.AddSingleton(electronWindow);
 
 // Wraps this app in a native Electron window. Calling UseElectron unconditionally commits
 // the whole process to Electron's hosting model (see WebHostBuilderExtensions.UseElectron):
@@ -30,6 +35,7 @@ builder.UseElectron(args, async () =>
 {
     var window = await Electron.WindowManager.CreateWindowAsync(
         new BrowserWindowOptions { Show = false, Title = "GrantOS Sentinel" });
+    electronWindow.SetWindow(window);
     window.OnReadyToShow += () => window.Show();
 });
 
@@ -66,4 +72,21 @@ app.MapRazorComponents<AppComponent>()
     .AddInteractiveServerRenderMode()
     .AddAdditionalAssemblies(typeof(Routes).Assembly);
 
-app.Run();
+await app.StartAsync();
+
+var server = app.Services.GetRequiredService<IServer>();
+var address = server.Features.Get<IServerAddressesFeature>()?.Addresses.FirstOrDefault();
+if (address is not null)
+{
+    electronWindow.SetBaseAddress(address);
+    await RuntimeStateFile.WriteAsync(address);
+}
+
+try
+{
+    await app.WaitForShutdownAsync();
+}
+finally
+{
+    RuntimeStateFile.Delete();
+}
