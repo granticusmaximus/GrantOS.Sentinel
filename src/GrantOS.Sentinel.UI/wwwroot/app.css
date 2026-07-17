@@ -137,6 +137,8 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .btn-ghost { background: transparent; }
 .btn-sm { padding: .3rem .55rem; font-size: .78rem; }
 .btn-row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+.inline-control { display: inline-flex; align-items: center; gap: .35rem; margin: 0; text-transform: none; letter-spacing: 0; }
+.inline-control input[type="checkbox"] { width: auto; }
 
 /* Tables / lists */
 .list { display: flex; flex-direction: column; gap: .6rem; }
@@ -144,6 +146,8 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .list-item h3 { margin: 0 0 .2rem; font-size: .95rem; }
 .workspace-details { min-width: 0; }
 .workspace-details .meta { overflow-wrap: anywhere; }
+.disabled-item { opacity: .62; }
+.standard-preview { margin-top: .45rem; color: var(--text-dim); font-size: .82rem; white-space: pre-wrap; }
 .meta { font-family: var(--mono); font-size: .72rem; color: var(--text-faint); }
 .tag { display: inline-block; font-family: var(--mono); font-size: .68rem; background: var(--bg-elev-2); border: 1px solid var(--border); border-radius: 4px; padding: .1rem .4rem; margin: .15rem .2rem 0 0; color: var(--text-dim); }
 .badge-default { color: var(--accent); border-color: var(--accent-dim); }
@@ -162,6 +166,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .source-badge { display: inline-block; font-family: var(--mono); font-size: .62rem; text-transform: uppercase; letter-spacing: .05em; border: 1px solid; border-radius: 4px; padding: .08rem .35rem; }
 .source-badge.memory { color: var(--accent); border-color: var(--accent-dim); }
 .source-badge.project { color: var(--warn); border-color: rgba(224,179,65,.55); }
+.source-badge.standard { color: #c7a7ff; border-color: rgba(166,124,255,.6); }
 .knowledge-location { margin-top: .4rem; color: var(--text-dim); font-family: var(--mono); font-size: .7rem; overflow-wrap: anywhere; }
 .knowledge-preview { max-height: 220px; overflow: auto; margin: .65rem 0; padding: .65rem; border: 1px solid var(--border-soft); border-radius: 5px; background: var(--bg); color: var(--text-dim); font-family: var(--mono); font-size: .72rem; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
 

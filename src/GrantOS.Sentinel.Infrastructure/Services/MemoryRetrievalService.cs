@@ -113,7 +113,8 @@ public sealed partial class MemoryRetrievalService(
         foreach (var entry in entries)
         {
             var contentLimit = Math.Max(50, settings.MaxEntryContentCharacters);
-            var content = entry.Content.Length > contentLimit
+            var wasTruncated = entry.Content.Length > contentLimit;
+            var content = wasTruncated
                 ? entry.Content[..contentLimit] + "…"
                 : entry.Content;
 
@@ -121,8 +122,11 @@ public sealed partial class MemoryRetrievalService(
             while (builder.Length + line.Length + 1 > budget && content.Length > 50)
             {
                 var overflow = builder.Length + line.Length + 1 - budget;
-                content = content[..Math.Max(50, content.Length - overflow - 16)] + "…";
+                var nextLength = Math.Max(50, content.Length - overflow - 16);
+                content = entry.Content[..Math.Min(nextLength, entry.Content.Length)] + "…";
                 line = SerializeEntry(entry, content);
+                if (nextLength == 50)
+                    break;
             }
 
             if (builder.Length + line.Length + 1 > budget)

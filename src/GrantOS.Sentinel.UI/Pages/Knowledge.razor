@@ -41,6 +41,7 @@ else
         <span>@_result.TotalMatches.ToString("N0") matches</span>
         <span class="tag">@_result.MemoryMatches.ToString("N0") memory</span>
         <span class="tag">@_result.ProjectMatches.ToString("N0") project files</span>
+        <span class="tag">@_result.StandardMatches.ToString("N0") standards</span>
         @if (_result.Items.Count < _result.TotalMatches)
         {
             <span class="meta">showing the first @_result.Items.Count.ToString("N0")</span>
@@ -59,19 +60,19 @@ else
                 <article class="knowledge-item">
                     <div class="knowledge-item-header">
                         <div>
-                            <span class="source-badge @(item.Source == KnowledgeSourceKind.Memory ? "memory" : "project")">@item.Source</span>
+                            <span class="source-badge @SourceClass(item.Source)">@item.Source</span>
                             <h3>@(item.Pinned ? "📌 " : "")@item.Title</h3>
                         </div>
-                        <button class="btn btn-sm" @onclick="() => AskChat(item)">Ask Chat</button>
+                        <button class="btn btn-sm" @onclick="() => AskChat(item)" disabled="@(item.Source == KnowledgeSourceKind.Standard && !item.Active)" title="@(item.Source == KnowledgeSourceKind.Standard && !item.Active ? "Enable this standard before applying it in Chat" : "Send this source to Chat")">Ask Chat</button>
                     </div>
-                    <div class="meta">@item.SourceName · @item.Scope · @item.UpdatedAt.ToLocalTime().ToString("g")</div>
+                    <div class="meta">@item.SourceName · @item.Scope · @item.UpdatedAt.ToLocalTime().ToString("g")@(!item.Active ? " · disabled" : "")</div>
                     @if (!string.IsNullOrWhiteSpace(item.Location))
                     {
                         <div class="knowledge-location">@item.Location</div>
                     }
                     <pre class="knowledge-preview">@item.ContentPreview</pre>
                     <button class="btn btn-ghost btn-sm" @onclick="() => OpenSource(item)">
-                        @(item.Source == KnowledgeSourceKind.Memory ? "Open Memory" : "Open Projects")
+                        @OpenLabel(item.Source)
                     </button>
                 </article>
             }
@@ -96,13 +97,29 @@ else
 
     private void AskChat(KnowledgeItem item)
     {
-        var source = item.Source == KnowledgeSourceKind.Memory
-            ? $"memory note '{item.Title}'"
-            : $"project file '{item.SourceName}/{item.Location}'";
+        var source = item.Source switch
+        {
+            KnowledgeSourceKind.Memory => $"memory note '{item.Title}'",
+            KnowledgeSourceKind.Standard => $"project standard '{item.Title}'",
+            _ => $"project file '{item.SourceName}/{item.Location}'"
+        };
         var prompt = $"Using the {source} as context, help me understand or apply it.";
         Nav.NavigateTo($"chat?scope={_scope}&prompt={Uri.EscapeDataString(prompt)}");
     }
 
-    private void OpenSource(KnowledgeItem item) =>
-        Nav.NavigateTo(item.Source == KnowledgeSourceKind.Memory ? "memory" : "projects");
+    private void OpenSource(KnowledgeItem item) => Nav.NavigateTo(item.Source switch
+    {
+        KnowledgeSourceKind.Memory => "memory",
+        KnowledgeSourceKind.Standard => "standards",
+        _ => "projects"
+    });
+
+    private static string OpenLabel(KnowledgeSourceKind source) => source switch
+    {
+        KnowledgeSourceKind.Memory => "Open Memory",
+        KnowledgeSourceKind.Standard => "Open Standards",
+        _ => "Open Projects"
+    };
+
+    private static string SourceClass(KnowledgeSourceKind source) => source.ToString().ToLowerInvariant();
 }

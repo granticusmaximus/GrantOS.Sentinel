@@ -3,6 +3,7 @@ using System;
 using GrantOS.Sentinel.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace GrantOS.Sentinel.Infrastructure.Migrations
 {
     [DbContext(typeof(SentinelDbContext))]
-    partial class SentinelDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260717193549_AddProjectStandards")]
+    partial class AddProjectStandards
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.0");

@@ -6,6 +6,7 @@
 @inject IConversationService Conversations
 @inject IMemoryRetrievalService MemoryRetrieval
 @inject IProjectWorkspaceService ProjectWorkspaces
+@inject IProjectStandardService ProjectStandards
 @inject ISystemPromptService SystemPrompts
 @inject IModelProfileService ModelProfiles
 @inject IToolAuditService Audit
@@ -49,6 +50,10 @@
             <input type="checkbox" @bind="_useProjects" disabled="@_sending" />
             Use projects
         </label>
+        <label class="memory-toggle" title="Apply enabled same-scope Project Standards to model responses">
+            <input type="checkbox" @bind="_useStandards" disabled="@_sending" />
+            Use standards
+        </label>
         <button class="btn btn-ghost btn-sm" @onclick="ResetConversation" disabled="@_sending">New thread</button>
     </div>
 
@@ -79,6 +84,16 @@
             @foreach (var document in _retrievedProjects.Documents)
             {
                 <span class="tag">@document.WorkspaceName/@document.RelativePath</span>
+            }
+        </div>
+    }
+    @if (_standardContext.Standards.Count > 0)
+    {
+        <div class="memory-context-note">
+            <span>Standards</span>
+            @foreach (var standard in _standardContext.Standards)
+            {
+                <span class="tag">@standard.Name · P@standard.Priority</span>
             }
         </div>
     }
@@ -147,9 +162,11 @@
     private string? _error;
     private bool _useMemory;
     private bool _useProjects = true;
+    private bool _useStandards = true;
     private ProjectScope _scope;
     private MemoryRetrievalResult _retrievedMemory = MemoryRetrievalResult.Empty;
     private ProjectRetrievalResult _retrievedProjects = ProjectRetrievalResult.Empty;
+    private StandardContextResult _standardContext = StandardContextResult.Empty;
     private PendingToolApproval? _pendingApproval;
     private readonly Dictionary<string, bool> _toolSupportByModel = [];
     private ElementReference _streamRef;
@@ -245,6 +262,7 @@
         _messages.Clear();
         _retrievedMemory = MemoryRetrievalResult.Empty;
         _retrievedProjects = ProjectRetrievalResult.Empty;
+        _standardContext = StandardContextResult.Empty;
         _error = null;
     }
 
@@ -292,6 +310,18 @@
         {
             _retrievedProjects = ProjectRetrievalResult.Empty;
             _error = $"Project retrieval was skipped: {ex.Message}";
+        }
+
+        try
+        {
+            _standardContext = _useStandards
+                ? await ProjectStandards.GetContextAsync(scope)
+                : StandardContextResult.Empty;
+        }
+        catch (Exception ex)
+        {
+            _standardContext = StandardContextResult.Empty;
+            _error = $"Project standards were skipped: {ex.Message}";
         }
 
         // A user turn can take several rounds: model replies with tool_calls, we run (or
@@ -349,7 +379,7 @@
             await Audit.LogAsync(
                 toolName: "ollama",
                 action: "chat",
-                parameters: $"model={_selectedModel}; scope={scope}; memories={_retrievedMemory.Entries.Count}; projectDocuments={_retrievedProjects.Documents.Count}",
+                parameters: $"model={_selectedModel}; scope={scope}; memories={_retrievedMemory.Entries.Count}; projectDocuments={_retrievedProjects.Documents.Count}; standards={_standardContext.Standards.Count}",
                 result: success ? $"ok ({assistantMessage.Content.Length} chars)" : "failed",
                 success: success,
                 scope: scope);
@@ -477,6 +507,9 @@
             if (prompt is not null)
                 wire.Add(new OllamaMessage("system", prompt.Content));
         }
+
+        if (!string.IsNullOrWhiteSpace(_standardContext.PromptText))
+            wire.Add(new OllamaMessage("system", _standardContext.PromptText));
 
         if (!string.IsNullOrWhiteSpace(_retrievedMemory.PromptText))
             wire.Add(new OllamaMessage("system", _retrievedMemory.PromptText));

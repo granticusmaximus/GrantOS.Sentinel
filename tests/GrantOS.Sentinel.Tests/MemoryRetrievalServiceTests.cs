@@ -69,6 +69,30 @@ public sealed class MemoryRetrievalServiceTests : IDisposable
         Assert.Empty(result.PromptText);
     }
 
+    [Fact]
+    public async Task Retrieve_terminates_when_minimum_excerpt_still_exceeds_budget()
+    {
+        await AddAsync(new MemoryEntry
+        {
+            Title = new string('T', 200),
+            Content = "security " + new string('x', 500),
+            Tags = "security",
+            Scope = ProjectScope.Personal
+        });
+        var service = CreateService(new MemoryRetrievalOptions
+        {
+            MaxEntries = 1,
+            MinimumScore = 1,
+            MaxContextCharacters = 1,
+            MaxEntryContentCharacters = 50
+        });
+
+        var result = await service.RetrieveAsync("security", ProjectScope.Personal)
+            .WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Single(result.Entries);
+    }
+
     private MemoryRetrievalService CreateService(MemoryRetrievalOptions? settings = null) =>
         new(_factory, Options.Create(settings ?? new MemoryRetrievalOptions()));
 

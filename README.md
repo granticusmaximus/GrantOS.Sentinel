@@ -130,8 +130,10 @@ SQLite connection, and the serialization tests exercise the JSON contract direct
   relevant same-scope notes and shows which ones were added to the model context.
 - **Projects**: register allowlisted local source workspaces, index supported text files,
   and let Chat retrieve relevant same-scope code and documentation with source paths.
-- **Knowledge**: search Memory notes and indexed Project files together with source and
-  scope filters, content previews, attribution, and a direct handoff to Chat.
+- **Knowledge**: search Memory notes, indexed Project files, and Standards together with
+  source and scope filters, content previews, attribution, and a direct handoff to Chat.
+- **Standards**: manage prioritized, categorized Personal/Work engineering rules. Enabled
+  same-scope standards are applied automatically to Chat and remain searchable in Knowledge.
 - **System Prompts**: manage prompts and set which one is the default.
 - **Models**: see models actually installed in Ollama (live) alongside your saved profiles.
 - **Agent tools**: supported Ollama models can propose shell commands and allowlisted file
@@ -205,6 +207,10 @@ content-only matches, pinned notes receive a priority boost, and Personal/Work s
 mix. Retrieved notes are serialized into a bounded system context and explicitly marked as
 untrusted reference data. The Chat toolbar can disable memory for an individual session.
 
+Project standards are direct user-authored guidance rather than retrieved reference data.
+Enabled standards are ordered by priority, bounded by configuration, and added to same-scope
+Chat requests. The Chat toolbar can disable them for an individual session.
+
 ## Honest caveats
 
 - The Electron/Blazor host builds and the automated test suite runs locally. The parked MAUI
@@ -215,7 +221,6 @@ untrusted reference data. The Chat toolbar can disable memory for an individual 
 
 - Split the localhost API into its own `GrantOS.Sentinel.Api` host and add auth before it
   ever leaves loopback.
-- Project standards (the remaining "soon" nav item).
 
 ## Configuration reference
 
@@ -244,6 +249,12 @@ untrusted reference data. The Chat toolbar can disable memory for an individual 
     "MaxRetrievedDocuments": 5,
     "MaxContextCharacters": 8000,
     "MaxDocumentContextCharacters": 2000
+  },
+  "Standards": {
+    "Enabled": true,
+    "MaxStandards": 12,
+    "MaxContextCharacters": 6000,
+    "MaxStandardContentCharacters": 2000
   },
   "Agent": {
     "AllowedDirectories": ["."],

@@ -24,8 +24,10 @@ public sealed partial class KnowledgeService(IDbContextFactory<SentinelDbContext
 
         var memoryItems = new List<KnowledgeItem>();
         var projectItems = new List<KnowledgeItem>();
+        var standardItems = new List<KnowledgeItem>();
         var memoryMatches = 0;
         var projectMatches = 0;
+        var standardMatches = 0;
 
         if (request.Source is KnowledgeSourceKind.All or KnowledgeSourceKind.Memory)
         {
@@ -61,10 +63,30 @@ public sealed partial class KnowledgeService(IDbContextFactory<SentinelDbContext
             projectItems.AddRange(candidates.Select(document => ToKnowledgeItem(document, terms)));
         }
 
+        if (request.Source is KnowledgeSourceKind.All or KnowledgeSourceKind.Standard)
+        {
+            var query = db.ProjectStandards
+                .AsNoTracking()
+                .Where(standard => standard.Scope == request.Scope);
+            if (terms.Length > 0)
+                query = query.Where(BuildStandardPredicate(terms));
+
+            standardMatches = await query.CountAsync(ct);
+            var candidates = await query
+                .OrderByDescending(standard => standard.Enabled)
+                .ThenByDescending(standard => standard.Priority)
+                .ThenByDescending(standard => standard.UpdatedAt)
+                .Take(CandidateLimit)
+                .ToListAsync(ct);
+            standardItems.AddRange(candidates.Select(standard => ToKnowledgeItem(standard, terms)));
+        }
+
         var selected = memoryItems
             .Concat(projectItems)
+            .Concat(standardItems)
             .OrderByDescending(item => item.Score)
             .ThenByDescending(item => item.Pinned)
+            .ThenByDescending(item => item.Active)
             .ThenByDescending(item => item.UpdatedAt)
             .ThenBy(item => item.Title)
             .Take(maxResults)
@@ -72,9 +94,10 @@ public sealed partial class KnowledgeService(IDbContextFactory<SentinelDbContext
 
         return new KnowledgeSearchResult(
             selected,
-            memoryMatches + projectMatches,
+            memoryMatches + projectMatches + standardMatches,
             memoryMatches,
-            projectMatches);
+            projectMatches,
+            standardMatches);
     }
 
     private static KnowledgeItem ToKnowledgeItem(MemoryEntry memory, IReadOnlyList<string> terms) =>
@@ -88,6 +111,7 @@ public sealed partial class KnowledgeService(IDbContextFactory<SentinelDbContext
             memory.Scope,
             memory.UpdatedAt,
             memory.Pinned,
+            true,
             ScoreMemory(memory, terms));
 
     private static KnowledgeItem ToKnowledgeItem(ProjectDocument document, IReadOnlyList<string> terms) =>
@@ -101,7 +125,22 @@ public sealed partial class KnowledgeService(IDbContextFactory<SentinelDbContext
             document.ProjectWorkspace.Scope,
             document.IndexedAt,
             false,
+            true,
             ScoreProject(document, terms));
+
+    private static KnowledgeItem ToKnowledgeItem(ProjectStandard standard, IReadOnlyList<string> terms) =>
+        new(
+            KnowledgeSourceKind.Standard,
+            standard.Id,
+            standard.Name,
+            standard.Category,
+            standard.AppliesTo,
+            CreatePreview(standard.Content, terms),
+            standard.Scope,
+            standard.UpdatedAt,
+            false,
+            standard.Enabled,
+            ScoreStandard(standard, terms));
 
     private static int ScoreMemory(MemoryEntry memory, IReadOnlyList<string> terms)
     {
@@ -130,6 +169,23 @@ public sealed partial class KnowledgeService(IDbContextFactory<SentinelDbContext
         {
             if (path.Contains(term, StringComparison.Ordinal)) score += 6;
             if (workspace.Contains(term, StringComparison.Ordinal)) score += 4;
+            if (content.Contains(term, StringComparison.Ordinal)) score += 1;
+        }
+        return score;
+    }
+
+    private static int ScoreStandard(ProjectStandard standard, IReadOnlyList<string> terms)
+    {
+        var score = standard.Enabled ? 2 : 0;
+        var name = standard.Name.ToLowerInvariant();
+        var category = standard.Category.ToLowerInvariant();
+        var appliesTo = standard.AppliesTo.ToLowerInvariant();
+        var content = standard.Content.ToLowerInvariant();
+        foreach (var term in terms)
+        {
+            if (name.Contains(term, StringComparison.Ordinal)) score += 8;
+            if (appliesTo.Contains(term, StringComparison.Ordinal)) score += 5;
+            if (category.Contains(term, StringComparison.Ordinal)) score += 4;
             if (content.Contains(term, StringComparison.Ordinal)) score += 1;
         }
         return score;
@@ -170,6 +226,20 @@ public sealed partial class KnowledgeService(IDbContextFactory<SentinelDbContext
             Expression.Property(workspace, nameof(ProjectWorkspace.Name))
         };
         return Expression.Lambda<Func<ProjectDocument, bool>>(BuildContainsAny(fields, terms), document);
+    }
+
+    private static Expression<Func<ProjectStandard, bool>> BuildStandardPredicate(IReadOnlyList<string> terms)
+    {
+        var standard = Expression.Parameter(typeof(ProjectStandard), "standard");
+        return Expression.Lambda<Func<ProjectStandard, bool>>(
+            BuildContainsAny(
+                standard,
+                terms,
+                nameof(ProjectStandard.Name),
+                nameof(ProjectStandard.Category),
+                nameof(ProjectStandard.AppliesTo),
+                nameof(ProjectStandard.Content)),
+            standard);
     }
 
     private static Expression BuildContainsAny(

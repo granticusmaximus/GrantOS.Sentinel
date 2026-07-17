@@ -107,5 +107,35 @@ public sealed class KnowledgeServiceTests : IDisposable
         Assert.True(result.Items[0].Pinned);
     }
 
+    [Fact]
+    public async Task Search_includes_enabled_and_disabled_project_standards()
+    {
+        using (var db = _factory.CreateDbContext())
+        {
+            db.ProjectStandards.Add(new ProjectStandard
+            {
+                Name = "API testing standard",
+                Category = "Testing",
+                AppliesTo = "ASP.NET APIs",
+                Content = "Use integration tests for every API endpoint.",
+                Scope = ProjectScope.Work,
+                Enabled = false
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var result = await _service.SearchAsync(new KnowledgeSearchRequest(
+            "integration API",
+            ProjectScope.Work,
+            KnowledgeSourceKind.Standard));
+
+        var standard = Assert.Single(result.Items);
+        Assert.Equal(KnowledgeSourceKind.Standard, standard.Source);
+        Assert.False(standard.Active);
+        Assert.Equal(1, result.StandardMatches);
+        Assert.Equal(0, result.MemoryMatches);
+        Assert.Equal(0, result.ProjectMatches);
+    }
+
     public void Dispose() => _factory.Dispose();
 }

@@ -1,0 +1,129 @@
+@page "/standards"
+@inject IProjectStandardService StandardsService
+@inject Microsoft.Extensions.Options.IOptions<SentinelOptions> SentinelOptions
+
+<h1>Project Standards</h1>
+<p class="page-sub">Durable engineering rules that can be applied automatically to same-scope Chat requests.</p>
+
+<div class="card">
+    <label>@(_editing.Id == 0 ? "New standard" : $"Editing #{_editing.Id}")</label>
+    <input type="text" placeholder="Name" @bind="_editing.Name" />
+    <div class="btn-row" style="margin-top:.5rem">
+        <input type="text" placeholder="Category" @bind="_editing.Category" style="max-width:200px" />
+        <input type="text" placeholder="Applies to (C#, APIs, tests…)" @bind="_editing.AppliesTo" style="max-width:320px" />
+        <select @bind="_editing.Scope" style="max-width:140px">
+            @foreach (var scope in Enum.GetValues<ProjectScope>())
+            {
+                <option value="@scope">@scope</option>
+            }
+        </select>
+        <label class="inline-control">
+            Priority
+            <input type="number" min="0" max="100" @bind="_editing.Priority" style="width:76px" />
+        </label>
+        <label class="inline-control">
+            <input type="checkbox" @bind="_editing.Enabled" /> enabled
+        </label>
+    </div>
+    <textarea placeholder="State the rule clearly, including exceptions or verification requirements." @bind="_editing.Content" style="margin-top:.5rem;min-height:150px"></textarea>
+    <div class="btn-row" style="margin-top:.6rem">
+        <button class="btn btn-primary" @onclick="Save" disabled="@(string.IsNullOrWhiteSpace(_editing.Name) || string.IsNullOrWhiteSpace(_editing.Content))">Save</button>
+        @if (_editing.Id != 0)
+        {
+            <button class="btn btn-ghost" @onclick="ClearForm">Cancel</button>
+        }
+    </div>
+</div>
+
+<h2>Saved standards</h2>
+@if (_items is null)
+{
+    <p class="meta">loading…</p>
+}
+else if (_items.Count == 0)
+{
+    <div class="empty">No project standards yet.</div>
+}
+else
+{
+    <div class="list">
+        @foreach (var standard in _items)
+        {
+            <div class="list-item @(standard.Enabled ? "" : "disabled-item")">
+                <div>
+                    <h3>@standard.Name</h3>
+                    <span class="meta">@standard.Category · @standard.Scope · priority @standard.Priority · @(standard.Enabled ? "enabled" : "disabled")</span>
+                    @if (!string.IsNullOrWhiteSpace(standard.AppliesTo))
+                    {
+                        <div><span class="tag">applies to: @standard.AppliesTo</span></div>
+                    }
+                    <div class="standard-preview">@(standard.Content.Length > 220 ? standard.Content[..220] + "…" : standard.Content)</div>
+                </div>
+                <div class="btn-row">
+                    <button class="btn btn-sm" @onclick="() => Toggle(standard)">@(standard.Enabled ? "Disable" : "Enable")</button>
+                    <button class="btn btn-sm" @onclick="() => Edit(standard)">Edit</button>
+                    <button class="btn btn-sm btn-danger" @onclick="() => Delete(standard.Id)">Delete</button>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<ProjectStandard>? _items;
+    private ProjectStandard _editing = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        ClearForm();
+        await Reload();
+    }
+
+    private async Task Reload() => _items = [.. await StandardsService.ListAsync()];
+
+    private void Edit(ProjectStandard standard) =>
+        _editing = new ProjectStandard
+        {
+            Id = standard.Id,
+            Name = standard.Name,
+            Category = standard.Category,
+            AppliesTo = standard.AppliesTo,
+            Content = standard.Content,
+            Scope = standard.Scope,
+            Priority = standard.Priority,
+            Enabled = standard.Enabled
+        };
+
+    private void ClearForm() =>
+        _editing = new ProjectStandard
+        {
+            Scope = SentinelOptions.Value.DefaultScope,
+            Priority = 50,
+            Enabled = true
+        };
+
+    private async Task Save()
+    {
+        if (_editing.Id == 0)
+            await StandardsService.CreateAsync(_editing);
+        else
+            await StandardsService.UpdateAsync(_editing);
+        ClearForm();
+        await Reload();
+    }
+
+    private async Task Toggle(ProjectStandard standard)
+    {
+        standard.Enabled = !standard.Enabled;
+        await StandardsService.UpdateAsync(standard);
+        await Reload();
+    }
+
+    private async Task Delete(int id)
+    {
+        await StandardsService.DeleteAsync(id);
+        if (_editing.Id == id)
+            ClearForm();
+        await Reload();
+    }
+}

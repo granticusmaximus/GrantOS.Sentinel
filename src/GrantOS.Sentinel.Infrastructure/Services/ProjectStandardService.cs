@@ -84,10 +84,10 @@ public sealed class ProjectStandardService(
         if (standards.Count == 0)
             return StandardContextResult.Empty;
 
-        return new StandardContextResult(standards, BuildPrompt(standards, settings));
+        return BuildContext(standards, settings);
     }
 
-    private static string BuildPrompt(
+    private static StandardContextResult BuildContext(
         IReadOnlyList<ProjectStandard> standards,
         StandardsOptions settings)
     {
@@ -97,26 +97,34 @@ public sealed class ProjectStandardService(
             "AppliesTo describes the intended technologies or work. System-level instructions still take precedence.\n";
         var budget = Math.Max(header.Length + 200, settings.MaxContextCharacters);
         var builder = new StringBuilder(header);
+        var included = new List<ProjectStandard>();
 
         foreach (var standard in standards)
         {
             var contentLimit = Math.Max(100, settings.MaxStandardContentCharacters);
-            var content = standard.Content.Length > contentLimit
+            var wasTruncated = standard.Content.Length > contentLimit;
+            var content = wasTruncated
                 ? standard.Content[..contentLimit] + "…"
                 : standard.Content;
             var line = Serialize(standard, content);
             while (builder.Length + line.Length + 1 > budget && content.Length > 100)
             {
                 var overflow = builder.Length + line.Length + 1 - budget;
-                content = content[..Math.Max(100, content.Length - overflow - 16)] + "…";
+                var nextLength = Math.Max(100, content.Length - overflow - 16);
+                content = standard.Content[..Math.Min(nextLength, standard.Content.Length)] + "…";
                 line = Serialize(standard, content);
+                if (nextLength == 100)
+                    break;
             }
             if (builder.Length + line.Length + 1 > budget)
                 break;
             builder.AppendLine(line);
+            included.Add(standard);
         }
 
-        return builder.ToString().TrimEnd();
+        return included.Count == 0
+            ? StandardContextResult.Empty
+            : new StandardContextResult(included, builder.ToString().TrimEnd());
     }
 
     private static string Serialize(ProjectStandard standard, string content) =>

@@ -6,7 +6,8 @@ public enum KnowledgeSourceKind
 {
     All = 0,
     Memory = 1,
-    Project = 2
+    Project = 2,
+    Standard = 3
 }
 
 public sealed record KnowledgeSearchRequest(
@@ -25,10 +26,12 @@ public sealed record KnowledgeItem(
     ProjectScope Scope,
     DateTime UpdatedAt,
     bool Pinned,
+    bool Active,
     int Score);
 
 public sealed record KnowledgeSearchResult(
     IReadOnlyList<KnowledgeItem> Items,
     int TotalMatches,
     int MemoryMatches,
-    int ProjectMatches);
+    int ProjectMatches,
+    int StandardMatches);
