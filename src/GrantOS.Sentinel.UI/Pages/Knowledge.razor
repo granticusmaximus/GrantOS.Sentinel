@@ -104,7 +104,7 @@ else
             _ => $"project file '{item.SourceName}/{item.Location}'"
         };
         var prompt = $"Using the {source} as context, help me understand or apply it.";
-        Nav.NavigateTo($"chat?scope={_scope}&prompt={Uri.EscapeDataString(prompt)}");
+        Nav.NavigateTo($"chat?scope={Uri.EscapeDataString(_scope.ToString())}&prompt={Uri.EscapeDataString(prompt)}");
     }
 
     private void OpenSource(KnowledgeItem item) => Nav.NavigateTo(item.Source switch
