@@ -1,13 +1,13 @@
-# GrantOS Sentinel — Phase 1 (Milestone 1: Local Brain Online)
+# GrantOS Sentinel — Local Agent Desktop
 
 A local-first AI knowledge and coding companion. Everything runs on your machine:
-a Blazor Server web app talks to a local [Ollama](https://ollama.com) server and stores
-all conversations, memory, prompts, and audit history in a single SQLite file. No cloud,
-no API keys, no telemetry.
+a Blazor Server app wrapped in Electron.NET talks to a local [Ollama](https://ollama.com)
+server and stores all conversations, memory, prompts, and audit history in a single SQLite
+file. No cloud, no API keys, no telemetry.
 
-This is **Phase 1**. The goal of Milestone 1 is a working loop: pick a model, send a
-prompt, stream a reply, and have it saved locally — plus the supporting screens for
-conversations, memory, system prompts, model profiles, and an audit log.
+The original local-chat milestone is complete. Sentinel can also propose local actions
+through model tool calls. Every action requires explicit approval, and dedicated filesystem
+tools are restricted to configured directories.
 
 ## What's in the box
 
@@ -18,7 +18,9 @@ src/
   GrantOS.Sentinel.Domain          entities + enums (no dependencies)
   GrantOS.Sentinel.Application      interfaces, options, Ollama DTOs
   GrantOS.Sentinel.Infrastructure   EF Core (SQLite), services, Ollama HTTP client, DI
-  GrantOS.Sentinel.Web              Blazor Server UI + a small localhost API
+  GrantOS.Sentinel.UI               shared Razor components and pages
+  GrantOS.Sentinel.Web              Blazor Server host + Electron.NET + localhost API
+  GrantOS.Sentinel.Maui             parked Mac Catalyst host (toolchain-blocked)
 tests/
   GrantOS.Sentinel.Tests            xUnit: memory service + Ollama serialization
 ```
@@ -78,14 +80,15 @@ migrations automatically.
 > start but you lose versioned schema history, and the two approaches don't mix cleanly —
 > pick one. Migrations are recommended for anything you intend to keep.
 
-## Run
+## Run the Electron desktop app
 
 ```bash
 dotnet run --project src/GrantOS.Sentinel.Web
 ```
 
-Open the HTTPS URL it prints (default `https://localhost:7217`). A SQLite file named
-`grantos-sentinel.db` appears in the Web project's working directory on first run.
+The command opens the Electron window directly; it does not open a separate browser tab.
+A SQLite file named `grantos-sentinel.db` appears in the Web project's working directory
+on first run.
 
 ## Test
 
@@ -106,7 +109,9 @@ SQLite connection, and the serialization tests exercise the JSON contract direct
 - **Memory**: create, edit, search, pin, and delete notes.
 - **System Prompts**: manage prompts and set which one is the default.
 - **Models**: see models actually installed in Ollama (live) alongside your saved profiles.
-- **Audit**: every chat call is recorded with success/failure.
+- **Agent tools**: supported Ollama models can propose shell commands and allowlisted file
+  reads, writes, and directory listings. Each valid action waits for Approve or Deny.
+- **Audit**: every chat and proposed tool action is recorded with success/failure.
 
 If Ollama is offline, the app still loads — chat is disabled with a clear message, and the
 dashboard/status reflect it rather than throwing.
@@ -148,23 +153,34 @@ real client needs more.
   terminal so the tools path is picked up.
 - **HTTPS certificate warning on first run.** Run `dotnet dev-certs https --trust` once.
 
+## Agent security
+
+Filesystem tools resolve symlinks and reject paths outside `Agent:AllowedDirectories`
+before presenting an approval prompt. The default `.` entry means the process working
+directory. Replace it with explicit absolute directories to grant access elsewhere, or set
+it to an empty list to disable filesystem tools.
+
+Shell commands are intentionally separate: they run as the current user and are not
+restricted by the filesystem allowlist. Review the exact command shown in the approval
+card before approving it.
+
+Tool-calling support depends on the selected Ollama model. Sentinel queries the model's
+capabilities and only sends tool definitions to compatible models. `qwen3:14b` was verified
+locally; some models may support ordinary chat but not structured tool calls.
+
 ## Honest caveats
 
-- This code was written but **not compiled or run in the environment it was authored in**
-  (no .NET SDK or Ollama there). Your local `dotnet build` and `dotnet test` are the real
-  first verification. Treat the first build as part of the milestone, not an afterthought.
-- Confidence that the design is sound and the Ollama/EF contracts are correct is **high**;
-  confidence that it compiles with zero fixes on the first try is **medium** — small issues
-  (a using directive, a Blazor binding quirk) are the most likely surprises, not the
-  architecture.
-- No authentication, no work-repository indexing, and no external network calls are part of
-  Phase 1, by design.
+- The Electron/Blazor host builds and the automated test suite runs locally. The parked MAUI
+  project still requires a Mac Catalyst workload compatible with the installed Xcode version.
+- No authentication or work-repository indexing is implemented yet.
 
 ## Roadmap (beyond Milestone 1)
 
 - Split the localhost API into its own `GrantOS.Sentinel.Api` host and add auth before it
   ever leaves loopback.
 - Persist token counts and streaming metadata per message.
+- Headed browser automation with a per-action approval flow.
+- A short `sentinel` terminal launcher that focuses the Electron window.
 - Knowledge base, project standards, and workspace indexing (the "soon" nav items).
 - Retrieval over the memory vault to feed relevant notes into prompts automatically.
 
@@ -180,7 +196,13 @@ real client needs more.
     "DefaultModel": "qwen2.5-coder",
     "TimeoutSeconds": 300
   },
-  "Sentinel": { "DefaultScope": "Personal" }
+  "Sentinel": { "DefaultScope": "Personal" },
+  "Agent": {
+    "AllowedDirectories": ["."],
+    "MaxReadBytes": 262144,
+    "MaxWriteBytes": 1048576,
+    "MaxDirectoryEntries": 200
+  }
 }
 ```
 

@@ -39,6 +39,11 @@ public sealed class ShellCommandTool : IAgentTool
             : $"Run shell command: `{command}`";
     }
 
+    public AgentToolValidationResult ValidateInvocation(JsonElement arguments) =>
+        string.IsNullOrWhiteSpace(GetCommand(arguments))
+            ? AgentToolValidationResult.Invalid("No command was provided.")
+            : AgentToolValidationResult.Valid;
+
     public async Task<AgentToolResult> ExecuteAsync(JsonElement arguments, CancellationToken ct = default)
     {
         var command = GetCommand(arguments);

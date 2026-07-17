@@ -2,9 +2,10 @@
 @inject IOllamaChatService Ollama
 @inject Microsoft.Extensions.Options.IOptions<OllamaClientOptions> OllamaOptions
 @inject Microsoft.Extensions.Options.IOptions<SentinelOptions> SentinelOptions
+@inject Microsoft.Extensions.Options.IOptions<AgentOptions> AgentOptions
 
 <h1>Settings</h1>
-<p class="page-sub">Phase 1 settings are read-only here and configured in <code>appsettings.json</code>.</p>
+<p class="page-sub">Settings are read-only here and configured in <code>appsettings.json</code>.</p>
 
 <div class="card">
     <label>Ollama base URL</label>
@@ -15,18 +16,25 @@
     <input type="text" value="@OllamaOptions.Value.TimeoutSeconds" readonly />
     <label>Default project scope</label>
     <input type="text" value="@SentinelOptions.Value.DefaultScope" readonly />
+    <label>Filesystem access</label>
+    <input type="text" value="@AllowedDirectoriesText" readonly />
+    <label>File tool limits</label>
+    <input type="text" value="@($"Read {AgentOptions.Value.MaxReadBytes:N0} bytes · Write {AgentOptions.Value.MaxWriteBytes:N0} bytes · List {AgentOptions.Value.MaxDirectoryEntries:N0} entries")" readonly />
     <div style="margin-top:1rem">
         <span class="pill @(_online ? "online" : "offline")"><span class="dot"></span>@(_online ? "Ollama reachable" : "Ollama offline")</span>
     </div>
 </div>
 
 <div class="alert alert-info">
-    Security: personal and work data are separated by project scope from day one, and no secrets
-    are stored in config or source control. Indexing work repositories and sending anything to
-    external services are intentionally not part of this build.
+    Security: every agent action requires approval. Dedicated filesystem tools also reject paths
+    outside the configured allowed directories before showing an approval prompt. Shell commands
+    remain current-user commands and should only be approved after reviewing the exact command.
 </div>
 
 @code {
     private bool _online;
+    private string AllowedDirectoriesText => AgentOptions.Value.AllowedDirectories.Count == 0
+        ? "Disabled"
+        : string.Join(" · ", AgentOptions.Value.AllowedDirectories);
     protected override async Task OnInitializedAsync() => _online = await Ollama.IsAvailableAsync();
 }

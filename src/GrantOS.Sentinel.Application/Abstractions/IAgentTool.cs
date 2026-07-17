@@ -21,7 +21,21 @@ public interface IAgentTool
     /// <summary>A short, human-readable summary of what this specific call would do, for the approval prompt.</summary>
     string DescribeInvocation(JsonElement arguments);
 
+    /// <summary>
+    /// Validates an invocation before it is offered to the user for approval. This is the
+    /// enforcement point for rules such as filesystem allowlists; implementations must also
+    /// repeat security-sensitive validation in <see cref="ExecuteAsync"/> to avoid TOCTOU gaps.
+    /// </summary>
+    AgentToolValidationResult ValidateInvocation(JsonElement arguments);
+
     Task<AgentToolResult> ExecuteAsync(JsonElement arguments, CancellationToken ct = default);
+}
+
+public sealed record AgentToolValidationResult(bool IsValid, string? Error = null)
+{
+    public static AgentToolValidationResult Valid { get; } = new(true);
+
+    public static AgentToolValidationResult Invalid(string error) => new(false, error);
 }
 
 public sealed record AgentToolResult(bool Success, string Output);

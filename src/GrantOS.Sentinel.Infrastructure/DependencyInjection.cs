@@ -16,6 +16,7 @@ public static class DependencyInjection
         // Strongly-typed options.
         services.Configure<OllamaClientOptions>(configuration.GetSection(OllamaClientOptions.SectionName));
         services.Configure<SentinelOptions>(configuration.GetSection(SentinelOptions.SectionName));
+        services.Configure<AgentOptions>(configuration.GetSection(AgentOptions.SectionName));
 
         // SQLite via a context factory (short-lived contexts, safe for Blazor Server circuits).
         var connectionString = configuration.GetConnectionString("Sentinel")
@@ -38,7 +39,11 @@ public static class DependencyInjection
         services.AddScoped<IToolAuditService, ToolAuditService>();
 
         // Agentic tools the model can request (each gated by user approval in the UI).
+        services.AddSingleton<FileSystemPathPolicy>();
         services.AddScoped<IAgentTool, ShellCommandTool>();
+        services.AddScoped<IAgentTool, ReadFileTool>();
+        services.AddScoped<IAgentTool, WriteFileTool>();
+        services.AddScoped<IAgentTool, ListDirectoryTool>();
 
         return services;
     }

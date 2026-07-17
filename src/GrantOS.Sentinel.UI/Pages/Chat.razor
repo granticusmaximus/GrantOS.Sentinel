@@ -290,29 +290,38 @@
             }
             else
             {
-                var description = tool.DescribeInvocation(call.Function.Arguments);
-                var approval = new PendingToolApproval
+                var validation = tool.ValidateInvocation(call.Function.Arguments);
+                if (!validation.IsValid)
                 {
-                    ToolName = tool.Name,
-                    Description = description,
-                    Decision = new TaskCompletionSource<bool>()
-                };
-                _pendingApproval = approval;
-                await InvokeAsync(StateHasChanged);
-
-                var approved = await approval.Decision.Task;
-                _pendingApproval = null;
-
-                if (!approved)
-                {
-                    resultText = "The user denied this action.";
-                    await Audit.LogAsync(tool.Name, "denied", description, null, false, scope);
+                    resultText = $"Action rejected by Sentinel's safety policy: {validation.Error}";
+                    await Audit.LogAsync(tool.Name, "rejected", tool.DescribeInvocation(call.Function.Arguments), resultText, false, scope);
                 }
                 else
                 {
-                    var result = await tool.ExecuteAsync(call.Function.Arguments);
-                    resultText = result.Output;
-                    await Audit.LogAsync(tool.Name, "execute", description, result.Output, result.Success, scope);
+                    var description = tool.DescribeInvocation(call.Function.Arguments);
+                    var approval = new PendingToolApproval
+                    {
+                        ToolName = tool.Name,
+                        Description = description,
+                        Decision = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously)
+                    };
+                    _pendingApproval = approval;
+                    await InvokeAsync(StateHasChanged);
+
+                    var approved = await approval.Decision.Task;
+                    _pendingApproval = null;
+
+                    if (!approved)
+                    {
+                        resultText = "The user denied this action.";
+                        await Audit.LogAsync(tool.Name, "denied", description, null, false, scope);
+                    }
+                    else
+                    {
+                        var result = await tool.ExecuteAsync(call.Function.Arguments);
+                        resultText = result.Output;
+                        await Audit.LogAsync(tool.Name, "execute", description, result.Output, result.Success, scope);
+                    }
                 }
             }
 
