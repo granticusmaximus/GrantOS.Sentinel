@@ -1,5 +1,6 @@
 using GrantOS.Sentinel.Infrastructure;
 using GrantOS.Sentinel.Infrastructure.Persistence;
+using GrantOS.Sentinel.UI;
 using GrantOS.Sentinel.Web.Components;
 using GrantOS.Sentinel.Web.Endpoints;
 using Microsoft.EntityFrameworkCore;
@@ -39,7 +40,10 @@ app.UseAntiforgery();
 // Localhost-only HTTP surface the future VS Code extension will call.
 app.MapSentinelApi();
 
+// Pages/Layout live in GrantOS.Sentinel.UI (shared with the Maui app), so the server-side
+// endpoint discovery that builds the route table needs to be told to scan that assembly too.
 app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
+    .AddInteractiveServerRenderMode()
+    .AddAdditionalAssemblies(typeof(Routes).Assembly);
 
 app.Run();

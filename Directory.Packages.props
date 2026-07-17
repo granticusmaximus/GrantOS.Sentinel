@@ -9,6 +9,9 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.0" />
     <!-- Razor Class Library shared by the Web and Maui hosts -->
     <PackageVersion Include="Microsoft.AspNetCore.Components.Web" Version="10.0.0" />
+    <!-- Mac Catalyst native shell (GrantOS.Sentinel.Maui) -->
+    <PackageVersion Include="Microsoft.Maui.Controls" Version="10.0.80" />
+    <PackageVersion Include="Microsoft.AspNetCore.Components.WebView.Maui" Version="10.0.80" />
     <!-- Extensions used by the Infrastructure DI extension in a class library -->
     <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.0" />

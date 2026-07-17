@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:bwv="clr-namespace:Microsoft.AspNetCore.Components.WebView.Maui;assembly=Microsoft.AspNetCore.Components.WebView.Maui"
+             xmlns:ui="clr-namespace:GrantOS.Sentinel.UI;assembly=GrantOS.Sentinel.UI"
+             x:Class="GrantOS.Sentinel.Maui.MainPage"
+             BackgroundColor="{DynamicResource PageBackgroundColor}">
+
+    <bwv:BlazorWebView x:Name="blazorWebView" HostPage="wwwroot/index.html">
+        <bwv:BlazorWebView.RootComponents>
+            <bwv:RootComponent Selector="#app" ComponentType="{x:Type ui:Routes}" />
+        </bwv:BlazorWebView.RootComponents>
+    </bwv:BlazorWebView>
+
+</ContentPage>
