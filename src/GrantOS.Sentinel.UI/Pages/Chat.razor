@@ -1,5 +1,7 @@
 @page "/chat"
 @page "/chat/{ConversationId:int}"
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
 @inject IOllamaChatService Ollama
 @inject IConversationService Conversations
 @inject ISystemPromptService SystemPrompts
@@ -7,6 +9,7 @@
 @inject IToolAuditService Audit
 @inject IEnumerable<IAgentTool> Tools
 @inject Microsoft.Extensions.Options.IOptions<SentinelOptions> SentinelOptions
+@inject IJSRuntime JS
 
 <div class="chat-page">
     <h1>Chat</h1>
@@ -60,7 +63,7 @@
         </div>
     }
 
-    <div class="chat-stream">
+    <div class="chat-stream" @ref="_streamRef">
         @if (_messages.Count == 0)
         {
             <div class="empty">Send a message to start. This thread is saved locally as soon as you do.</div>
@@ -76,8 +79,8 @@
 
     <div class="chat-input">
         <textarea @bind="_input" @bind:event="oninput" placeholder="Ask Sentinel…" disabled="@_sending"></textarea>
-        <button class="btn btn-primary" @onclick="SendAsync" disabled="@(_sending || string.IsNullOrWhiteSpace(_input) || !_online)">
-            @(_sending ? "…" : "Send")
+        <button class="btn btn-primary" title="Send" @onclick="SendAsync" disabled="@(_sending || string.IsNullOrWhiteSpace(_input) || !_online)">
+            @(_sending ? "…" : "↑")
         </button>
     </div>
 </div>
@@ -98,6 +101,8 @@
     private string? _error;
     private PendingToolApproval? _pendingApproval;
     private readonly Dictionary<string, bool> _toolSupportByModel = [];
+    private ElementReference _streamRef;
+    private IJSObjectReference? _scrollModule;
 
     private sealed class PendingToolApproval
     {
@@ -121,6 +126,24 @@
 
         if (ConversationId is int existingId)
             await LoadConversationAsync(existingId);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            _scrollModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/GrantOS.Sentinel.UI/chatScroll.js");
+
+        if (_scrollModule is not null && _messages.Count > 0)
+            await _scrollModule.InvokeVoidAsync("scrollToBottom", _streamRef);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_scrollModule is not null)
+        {
+            try { await _scrollModule.DisposeAsync(); }
+            catch (JSDisconnectedException) { /* circuit already gone - nothing to clean up */ }
+        }
     }
 
     private async Task LoadConversationAsync(int id)
