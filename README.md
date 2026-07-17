@@ -128,6 +128,8 @@ SQLite connection, and the serialization tests exercise the JSON contract direct
 - **Conversations**: your saved threads are listed; open one to reload it, or delete it.
 - **Memory**: create, edit, search, pin, and delete notes. Chat automatically retrieves
   relevant same-scope notes and shows which ones were added to the model context.
+- **Projects**: register allowlisted local source workspaces, index supported text files,
+  and let Chat retrieve relevant same-scope code and documentation with source paths.
 - **System Prompts**: manage prompts and set which one is the default.
 - **Models**: see models actually installed in Ollama (live) alongside your saved profiles.
 - **Agent tools**: supported Ollama models can propose shell commands and allowlisted file
@@ -178,10 +180,15 @@ real client needs more.
 
 ## Agent security
 
-Filesystem tools resolve symlinks and reject paths outside `Agent:AllowedDirectories`
-before presenting an approval prompt. The default `.` entry means the process working
-directory. Replace it with explicit absolute directories to grant access elsewhere, or set
-it to an empty list to disable filesystem tools.
+Filesystem tools and project indexing resolve symlinks and reject paths outside
+`Agent:AllowedDirectories`. The default `.` entry means the process working directory.
+Replace it with explicit absolute repository roots to register Projects elsewhere, or set it
+to an empty list to disable filesystem tools and workspace registration.
+
+Project indexing is read-only and local. It skips dependency, build, VCS, and IDE directories;
+ignores binary and oversized files; stores supported text content in Sentinel's SQLite database;
+and removes stale indexed documents on re-index without modifying source files. Retrieval is
+restricted to the active Personal or Work scope and inserted as explicitly untrusted context.
 
 Shell commands are intentionally separate: they run as the current user and are not
 restricted by the filesystem allowlist. Review the exact command shown in the approval
@@ -200,13 +207,13 @@ untrusted reference data. The Chat toolbar can disable memory for an individual 
 
 - The Electron/Blazor host builds and the automated test suite runs locally. The parked MAUI
   project still requires a Mac Catalyst workload compatible with the installed Xcode version.
-- No authentication or work-repository indexing is implemented yet.
+- No authentication is implemented yet.
 
 ## Roadmap (beyond Milestone 1)
 
 - Split the localhost API into its own `GrantOS.Sentinel.Api` host and add auth before it
   ever leaves loopback.
-- Knowledge base, project standards, and workspace indexing (the "soon" nav items).
+- Knowledge base and project standards (the remaining "soon" nav items).
 
 ## Configuration reference
 
@@ -227,6 +234,14 @@ untrusted reference data. The Chat toolbar can disable memory for an individual 
     "MinimumScore": 2,
     "MaxContextCharacters": 6000,
     "MaxEntryContentCharacters": 1500
+  },
+  "WorkspaceIndex": {
+    "Enabled": true,
+    "MaxFilesPerWorkspace": 5000,
+    "MaxFileBytes": 262144,
+    "MaxRetrievedDocuments": 5,
+    "MaxContextCharacters": 8000,
+    "MaxDocumentContextCharacters": 2000
   },
   "Agent": {
     "AllowedDirectories": ["."],

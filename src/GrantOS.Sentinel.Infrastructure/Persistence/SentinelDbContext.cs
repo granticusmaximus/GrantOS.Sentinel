@@ -11,6 +11,8 @@ public class SentinelDbContext(DbContextOptions<SentinelDbContext> options) : Db
     public DbSet<SystemPrompt> SystemPrompts => Set<SystemPrompt>();
     public DbSet<ModelProfile> ModelProfiles => Set<ModelProfile>();
     public DbSet<ToolAuditLog> ToolAuditLogs => Set<ToolAuditLog>();
+    public DbSet<ProjectWorkspace> ProjectWorkspaces => Set<ProjectWorkspace>();
+    public DbSet<ProjectDocument> ProjectDocuments => Set<ProjectDocument>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -66,6 +68,26 @@ public class SentinelDbContext(DbContextOptions<SentinelDbContext> options) : Db
             e.Property(x => x.Action).HasMaxLength(200).IsRequired();
             e.Property(x => x.Scope).HasConversion<string>().HasMaxLength(20);
             e.HasIndex(x => x.CreatedAt);
+        });
+
+        b.Entity<ProjectWorkspace>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            e.Property(x => x.RootPath).HasMaxLength(2_000).IsRequired();
+            e.Property(x => x.Scope).HasConversion<string>().HasMaxLength(20);
+            e.HasIndex(x => x.RootPath).IsUnique();
+            e.HasMany(x => x.Documents)
+                .WithOne(x => x.ProjectWorkspace!)
+                .HasForeignKey(x => x.ProjectWorkspaceId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<ProjectDocument>(e =>
+        {
+            e.Property(x => x.RelativePath).HasMaxLength(2_000).IsRequired();
+            e.Property(x => x.Content).IsRequired();
+            e.Property(x => x.ContentHash).HasMaxLength(64).IsRequired();
+            e.HasIndex(x => new { x.ProjectWorkspaceId, x.RelativePath }).IsUnique();
         });
 
         SeedData(b);

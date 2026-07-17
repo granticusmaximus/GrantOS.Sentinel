@@ -142,6 +142,8 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .list { display: flex; flex-direction: column; gap: .6rem; }
 .list-item { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); padding: .85rem 1rem; }
 .list-item h3 { margin: 0 0 .2rem; font-size: .95rem; }
+.workspace-details { min-width: 0; }
+.workspace-details .meta { overflow-wrap: anywhere; }
 .meta { font-family: var(--mono); font-size: .72rem; color: var(--text-faint); }
 .tag { display: inline-block; font-family: var(--mono); font-size: .68rem; background: var(--bg-elev-2); border: 1px solid var(--border); border-radius: 4px; padding: .1rem .4rem; margin: .15rem .2rem 0 0; color: var(--text-dim); }
 .badge-default { color: var(--accent); border-color: var(--accent-dim); }

@@ -1,0 +1,145 @@
+@page "/projects"
+@inject IProjectWorkspaceService Workspaces
+@inject Microsoft.Extensions.Options.IOptions<SentinelOptions> SentinelOptions
+
+<h1>Projects</h1>
+<p class="page-sub">Index allowlisted local source workspaces so Chat can retrieve relevant code and documentation.</p>
+
+<div class="card">
+    <label>Register workspace</label>
+    <input type="text" placeholder="Display name (optional)" @bind="_name" />
+    <input type="text" placeholder="Absolute directory path" @bind="_rootPath" style="margin-top:.5rem" />
+    <div class="btn-row" style="margin-top:.6rem">
+        <select @bind="_scope" style="max-width:160px">
+            @foreach (var scope in Enum.GetValues<ProjectScope>())
+            {
+                <option value="@scope">@scope</option>
+            }
+        </select>
+        <button class="btn btn-primary" @onclick="Create" disabled="@(_busy || string.IsNullOrWhiteSpace(_rootPath))">Register and index</button>
+    </div>
+</div>
+
+@if (_error is not null)
+{
+    <div class="alert alert-danger">@_error</div>
+}
+@if (_notice is not null)
+{
+    <div class="alert alert-info">@_notice</div>
+}
+
+<h2>Indexed workspaces</h2>
+@if (_items is null)
+{
+    <p class="meta">loading…</p>
+}
+else if (_items.Count == 0)
+{
+    <div class="empty">No workspaces registered. Paths must be inside Agent:AllowedDirectories.</div>
+}
+else
+{
+    <div class="list">
+        @foreach (var workspace in _items)
+        {
+            <div class="list-item">
+                <div class="workspace-details">
+                    <h3>@workspace.Name</h3>
+                    <div class="meta">@workspace.RootPath</div>
+                    <div class="meta">
+                        @workspace.Scope · @workspace.IndexedFileCount.ToString("N0") files · @FormatBytes(workspace.IndexedByteCount)
+                        @if (workspace.LastIndexedAt is DateTime indexedAt)
+                        {
+                            <span> · indexed @indexedAt.ToLocalTime().ToString("g")</span>
+                        }
+                        else
+                        {
+                            <span> · not indexed</span>
+                        }
+                    </div>
+                </div>
+                <div class="btn-row">
+                    <button class="btn btn-sm" @onclick="() => Index(workspace.Id)" disabled="@_busy">Re-index</button>
+                    <button class="btn btn-sm btn-danger" @onclick="() => Delete(workspace.Id)" disabled="@_busy">Delete index</button>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<ProjectWorkspace>? _items;
+    private string _name = "";
+    private string _rootPath = "";
+    private ProjectScope _scope;
+    private bool _busy;
+    private string? _error;
+    private string? _notice;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _scope = SentinelOptions.Value.DefaultScope;
+        await Reload();
+    }
+
+    private async Task Reload() => _items = [.. await Workspaces.ListAsync()];
+
+    private async Task Create()
+    {
+        await RunAsync(async () =>
+        {
+            var workspace = await Workspaces.CreateAsync(_name, _rootPath, _scope);
+            var result = await Workspaces.IndexAsync(workspace.Id);
+            _name = "";
+            _rootPath = "";
+            _notice = $"Indexed {result.IndexedFiles:N0} files ({FormatBytes(result.IndexedBytes)}).";
+        });
+    }
+
+    private async Task Index(int id)
+    {
+        await RunAsync(async () =>
+        {
+            var result = await Workspaces.IndexAsync(id);
+            _notice = $"Indexed {result.IndexedFiles:N0} files: {result.AddedFiles:N0} added, {result.UpdatedFiles:N0} updated, {result.RemovedFiles:N0} removed.";
+        });
+    }
+
+    private async Task Delete(int id)
+    {
+        await RunAsync(async () =>
+        {
+            await Workspaces.DeleteAsync(id);
+            _notice = "The local workspace index was deleted. Source files were not changed.";
+        });
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        _busy = true;
+        _error = null;
+        _notice = null;
+        try
+        {
+            await action();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            await Reload();
+            _busy = false;
+        }
+    }
+
+    private static string FormatBytes(long bytes) => bytes switch
+    {
+        >= 1_073_741_824 => $"{bytes / 1_073_741_824d:F1} GB",
+        >= 1_048_576 => $"{bytes / 1_048_576d:F1} MB",
+        >= 1_024 => $"{bytes / 1_024d:F1} KB",
+        _ => $"{bytes:N0} B"
+    };
+}

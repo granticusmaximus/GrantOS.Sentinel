@@ -5,6 +5,7 @@
 @inject IOllamaChatService Ollama
 @inject IConversationService Conversations
 @inject IMemoryRetrievalService MemoryRetrieval
+@inject IProjectWorkspaceService ProjectWorkspaces
 @inject ISystemPromptService SystemPrompts
 @inject IModelProfileService ModelProfiles
 @inject IToolAuditService Audit
@@ -44,6 +45,10 @@
             <input type="checkbox" @bind="_useMemory" disabled="@_sending" />
             Use memory
         </label>
+        <label class="memory-toggle" title="Add relevant source excerpts from indexed Projects to the model context">
+            <input type="checkbox" @bind="_useProjects" disabled="@_sending" />
+            Use projects
+        </label>
         <button class="btn btn-ghost btn-sm" @onclick="ResetConversation" disabled="@_sending">New thread</button>
     </div>
 
@@ -64,6 +69,16 @@
             @foreach (var memory in _retrievedMemory.Entries)
             {
                 <span class="tag">@(memory.Pinned ? "📌 " : "")@memory.Title</span>
+            }
+        </div>
+    }
+    @if (_retrievedProjects.Documents.Count > 0)
+    {
+        <div class="memory-context-note">
+            <span>Project context</span>
+            @foreach (var document in _retrievedProjects.Documents)
+            {
+                <span class="tag">@document.WorkspaceName/@document.RelativePath</span>
             }
         </div>
     }
@@ -129,8 +144,10 @@
     private bool _online;
     private string? _error;
     private bool _useMemory;
+    private bool _useProjects = true;
     private ProjectScope _scope;
     private MemoryRetrievalResult _retrievedMemory = MemoryRetrievalResult.Empty;
+    private ProjectRetrievalResult _retrievedProjects = ProjectRetrievalResult.Empty;
     private PendingToolApproval? _pendingApproval;
     private readonly Dictionary<string, bool> _toolSupportByModel = [];
     private ElementReference _streamRef;
@@ -225,6 +242,7 @@
         _scope = SentinelOptions.Value.DefaultScope;
         _messages.Clear();
         _retrievedMemory = MemoryRetrievalResult.Empty;
+        _retrievedProjects = ProjectRetrievalResult.Empty;
         _error = null;
     }
 
@@ -260,6 +278,18 @@
         {
             _retrievedMemory = MemoryRetrievalResult.Empty;
             _error = $"Memory retrieval was skipped: {ex.Message}";
+        }
+
+        try
+        {
+            _retrievedProjects = _useProjects
+                ? await ProjectWorkspaces.RetrieveAsync(userText, scope)
+                : ProjectRetrievalResult.Empty;
+        }
+        catch (Exception ex)
+        {
+            _retrievedProjects = ProjectRetrievalResult.Empty;
+            _error = $"Project retrieval was skipped: {ex.Message}";
         }
 
         // A user turn can take several rounds: model replies with tool_calls, we run (or
@@ -317,7 +347,7 @@
             await Audit.LogAsync(
                 toolName: "ollama",
                 action: "chat",
-                parameters: $"model={_selectedModel}; scope={scope}; memories={_retrievedMemory.Entries.Count}",
+                parameters: $"model={_selectedModel}; scope={scope}; memories={_retrievedMemory.Entries.Count}; projectDocuments={_retrievedProjects.Documents.Count}",
                 result: success ? $"ok ({assistantMessage.Content.Length} chars)" : "failed",
                 success: success,
                 scope: scope);
@@ -448,6 +478,9 @@
 
         if (!string.IsNullOrWhiteSpace(_retrievedMemory.PromptText))
             wire.Add(new OllamaMessage("system", _retrievedMemory.PromptText));
+
+        if (!string.IsNullOrWhiteSpace(_retrievedProjects.PromptText))
+            wire.Add(new OllamaMessage("system", _retrievedProjects.PromptText));
 
         foreach (var m in _messages.Where(m => m.Role != ChatRole.System))
         {
